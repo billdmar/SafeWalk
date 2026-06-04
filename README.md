@@ -40,6 +40,20 @@ SafeWalk is an iOS app that keeps an eye on you when you're walking alone — la
 | Notifications | UserNotifications (actionable categories) |
 | Persistence | `UserDefaults` (Codable emergency contacts) |
 
+## Screenshots
+
+<!--
+  Add screenshots here. Drop your images into a `docs/` folder and reference them, e.g.:
+
+  | Check-in chat | Live map | Emergency contacts |
+  | :--: | :--: | :--: |
+  | ![Chat](docs/chat.png) | ![Map](docs/map.png) | ![Contacts](docs/contacts.png) |
+
+  In the iOS Simulator: File ▸ Save Screen (⌘S) saves a clean device-framed PNG.
+-->
+
+_Screenshots coming soon — run the app in the iOS Simulator and capture the chat, live map, and emergency-contacts screens._
+
 ## Architecture
 
 - **`SafetyWatcherView`** — the main screen: live map, check-in countdown, chat feed, and emergency-contacts panel.
