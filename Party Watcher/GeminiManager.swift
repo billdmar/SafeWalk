@@ -2,7 +2,8 @@ import Foundation
 
 class GeminiManager {
     static let shared = GeminiManager()
-    private let apiKey = "Secrets.geminiAPIKey"
+    // Loaded from Secrets.swift, which is gitignored. See Secrets.example.swift.
+    private let apiKey = Secrets.geminiAPIKey
     private let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
     struct GeminiPart: Codable {
