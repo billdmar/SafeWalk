@@ -33,7 +33,9 @@ class GeminiManager {
         let requestBody = GeminiRequest(contents: messages)
         guard let url = URL(string: endpoint),
               let httpBody = try? JSONEncoder().encode(requestBody) else {
+            #if DEBUG
             print("[GeminiManager] Invalid URL or body")
+            #endif
             completion(nil)
             return
         }
@@ -45,16 +47,20 @@ class GeminiManager {
 
         let task = URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
+                #if DEBUG
                 print("[GeminiManager] Network error: \(error)")
+                #endif
                 completion(nil)
                 return
             }
+            #if DEBUG
             if let httpResponse = response as? HTTPURLResponse {
                 print("[GeminiManager] HTTP status: \(httpResponse.statusCode)")
             }
             if let data = data, let bodyString = String(data: data, encoding: .utf8) {
                 print("[GeminiManager] Response body: \n\(bodyString)")
             }
+            #endif
             guard let data = data,
                   let decoded = try? JSONDecoder().decode(GeminiResponse.self, from: data),
                   let reply = decoded.candidates.first?.content.parts.first?.text else {
