@@ -5,7 +5,7 @@
 SafeWalk is an iOS app that keeps an eye on you when you're walking alone — late at night, leaving a party, or crossing campus. An AI chatbot checks in with you at regular intervals; if you stop responding or stop moving, it raises an alert and gives you one tap to call campus police, so help is never more than a button away.
 
 ![Swift](https://img.shields.io/badge/Swift-5-orange?logo=swift&logoColor=white)
-![iOS](https://img.shields.io/badge/iOS-16%2B-000000?logo=apple&logoColor=white)
+![iOS](https://img.shields.io/badge/iOS-18%2B-000000?logo=apple&logoColor=white)
 ![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0071e3)
 ![Gemini](https://img.shields.io/badge/AI-Google%20Gemini-4285F4?logo=google&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
@@ -33,7 +33,7 @@ SafeWalk is an iOS app that keeps an eye on you when you're walking alone — la
 
 | Area | Technology |
 | --- | --- |
-| UI | SwiftUI (iOS 16+) |
+| UI | SwiftUI (iOS 18+) |
 | Language | Swift 5 / Xcode |
 | AI chat | Google Gemini (`gemini-2.0-flash`) |
 | Location & maps | Core Location + MapKit |
