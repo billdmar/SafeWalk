@@ -3,17 +3,26 @@ import CoreLocation
 import UserNotifications
 import MapKit
 
+/// A trusted contact the user can notify in an emergency. Persisted via `UserDefaults`.
 struct EmergencyContact: Identifiable, Codable, Hashable {
     let id = UUID()
     var name: String
     var phone: String
 }
 
+/// A map-annotatable wrapper for the user's current coordinate.
 struct UserLocation: Identifiable {
     let id = UUID()
     let coordinate: CLLocationCoordinate2D
 }
 
+/// The app's main screen and safety controller.
+///
+/// `SafetyWatcherView` ties together the live location map, the Gemini-powered
+/// check-in chat, and the emergency-contacts panel. Two timers drive the safety
+/// logic: a periodic check-in timer that prompts the user, and an inactivity
+/// timer that escalates (alert + local notification to call campus police) when
+/// the user neither replies nor moves within `inactivityThreshold`.
 struct SafetyWatcherView: View {
     @State private var messages: [String] = ["👋 Hi! I’ll check in with you as you walk. Reply to my messages so I know you’re safe!"]
     @State private var userInput: String = ""
@@ -137,7 +146,9 @@ struct SafetyWatcherView: View {
                         .autocapitalization(.sentences)
                         .disableAutocorrection(true)
                     Button("Send") {
-                        print("Send button tapped with input: \(userInput)")
+                        #if DEBUG
+                        print("[SafetyWatcherView] Send button tapped")
+                        #endif
                         sendMessage()
                     }
                     .disabled(userInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -157,7 +168,9 @@ struct SafetyWatcherView: View {
                             .foregroundColor(burntOrange)
                         Spacer()
                         Button(action: {
-                            print("Add Contact button tapped")
+                            #if DEBUG
+                            print("[SafetyWatcherView] Add Contact button tapped")
+                            #endif
                             showAddContact = true
                         }) {
                             Image(systemName: "plus.circle.fill")
@@ -209,7 +222,9 @@ struct SafetyWatcherView: View {
                     .autocapitalization(.none)
                     .disableAutocorrection(true)
                 Button("Add") {
-                    print("Add Contact confirmed: \(newContactName), \(newContactPhone)")
+                    #if DEBUG
+                    print("[SafetyWatcherView] Add Contact confirmed")
+                    #endif
                     addContact()
                 }
                 .disabled(newContactName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || newContactPhone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -329,6 +344,8 @@ struct SafetyWatcherView: View {
     }
 }
 
+/// Handles taps on the actionable emergency notification, placing a `tel://`
+/// call to campus police when the user chooses the "Call UT Police" action.
 class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         if response.actionIdentifier == "CALL_UTPD_ACTION" {
@@ -340,7 +357,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     }
 }
 
-// Chat bubble view
+/// A single chat message bubble, styled and aligned by whether the user sent it.
 struct ChatBubble: View {
     let message: String
     let isUser: Bool
@@ -377,7 +394,12 @@ extension UserDefaults {
     }
 }
 
-// Simple location manager for live tracking
+/// Publishes the user's live location and reports significant movement.
+///
+/// Wraps `CLLocationManager`, requests when-in-use authorization, and publishes
+/// `lastLocation` for the map. When the user moves more than 5 metres between
+/// updates it fires `onMovement`, which the safety logic uses to reset the
+/// inactivity timer.
 class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     @Published var lastLocation: CLLocation?
