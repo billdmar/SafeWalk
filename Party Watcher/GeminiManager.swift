@@ -1,6 +1,14 @@
 import Foundation
 
+/// A lightweight singleton wrapper around the Google Gemini REST API.
+///
+/// `GeminiManager` encodes a multi-turn conversation into Gemini's
+/// `generateContent` request shape, performs the network call on
+/// `URLSession.shared`, and returns the model's reply text (or `nil` on
+/// any failure). Verbose request/response logging is compiled in only for
+/// `DEBUG` builds so that response bodies never reach release logs.
 class GeminiManager {
+    /// Shared instance used throughout the app.
     static let shared = GeminiManager()
     // Loaded from Secrets.swift, which is gitignored. See Secrets.example.swift.
     private let apiKey = Secrets.geminiAPIKey
@@ -29,6 +37,12 @@ class GeminiManager {
         let candidates: [Candidate]
     }
 
+    /// Sends a conversation to Gemini and returns the model's reply.
+    /// - Parameters:
+    ///   - messages: The full conversation so far, oldest first.
+    ///   - completion: Called with the trimmed reply text, or `nil` if the
+    ///     request fails, the response cannot be decoded, or no candidate is
+    ///     returned. Invoked on a background queue.
     func sendMessage(messages: [GeminiMessage], completion: @escaping (String?) -> Void) {
         let requestBody = GeminiRequest(contents: messages)
         guard let url = URL(string: endpoint),
