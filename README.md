@@ -15,8 +15,10 @@ SafeWalk is an iOS app that keeps an eye on you when you're walking alone — la
 
 ## Features
 
+- **At-a-glance safety status** — A prominent, animated status hero communicates your state at a glance: **You're safe** (calm green), **Checking in…** (amber, while a prompt awaits your reply), or **Alert sent** (red) when escalation fires.
+- **One-tap quick actions** — **I'm safe** instantly resets the check-in clock and reassures the companion; **I need help** triggers escalation immediately, without waiting for the inactivity timer.
 - **AI check-in companion** — A friendly chatbot powered by Google Gemini messages you on a timer ("Just checking in! Reply if you're okay") and holds a natural, supportive conversation while you walk.
-- **Live location map** — A MapKit view tracks your position in real time using Core Location.
+- **Live location map** — A MapKit view tracks your position in real time using Core Location, with a live countdown to the next check-in.
 - **Background tracking** — With "Always" location permission, SafeWalk keeps watching your position even when the screen is locked or the app is backgrounded (via the `location` background mode).
 - **Inactivity & no-movement detection** — If you don't reply or you stop moving for too long, the app assumes something may be wrong and escalates automatically.
 - **Emergency-contact escalation** — Add and manage trusted contacts (persisted locally with `UserDefaults`). When escalation fires and you have a contact saved, the alert offers a one-tap "Text <name>" action that opens a prefilled SMS — including a Maps link to your last known location — alongside the campus-police call.
@@ -45,19 +47,14 @@ SafeWalk is an iOS app that keeps an eye on you when you're walking alone — la
 
 ## Screenshots
 
-Placeholder slots below — capture instructions and the image filenames live in
-[docs/SCREENSHOTS.md](docs/SCREENSHOTS.md). Drop the PNGs into `docs/` and they
-render here automatically.
-
-| Live map | Check-in chat |
+| Light mode | Dark mode |
 | :--: | :--: |
-| ![Live location map](docs/map.png) | ![AI check-in chat](docs/chat.png) |
+| ![SafeWalk in light mode](docs/screenshot-light.png) | ![SafeWalk in dark mode](docs/screenshot-dark.png) |
 
-| Emergency alert | Emergency contacts |
-| :--: | :--: |
-| ![Escalation alert](docs/alert.png) | ![Emergency contacts](docs/contacts.png) |
-
-_Screenshots are placeholders until captured in the iOS Simulator — see [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md)._
+A card-based dashboard: the animated safety-status hero, a live location map with a
+live check-in countdown, one-tap **I'm safe** / **I need help** quick actions, and the
+Gemini-powered check-in chat. Captured in the iOS Simulator (iPhone 17 Pro). For more
+angles (the escalation alert, emergency-contacts panel), see [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
 
 ## Architecture
 

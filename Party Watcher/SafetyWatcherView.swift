@@ -10,10 +10,60 @@ struct EmergencyContact: Identifiable, Codable, Hashable {
     var phone: String
 }
 
+/// A single chat message with a stable identity and an explicit sender.
+///
+/// Modeling the sender explicitly (rather than inferring it from a message's
+/// index parity) keeps bubble alignment correct even when the bot posts an
+/// off-cadence message such as an automatic check-in.
+struct ChatMessage: Identifiable, Hashable {
+    let id = UUID()
+    var text: String
+    var isUser: Bool
+}
+
 /// A map-annotatable wrapper for the user's current coordinate.
 struct UserLocation: Identifiable {
     let id = UUID()
     let coordinate: CLLocationCoordinate2D
+}
+
+/// The high-level safety state surfaced by the status hero.
+enum SafetyStatus {
+    case safe
+    case checking
+    case alert
+
+    var title: String {
+        switch self {
+        case .safe: return "You're safe"
+        case .checking: return "Checking in…"
+        case .alert: return "Alert sent"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .safe: return "SafeWalk is watching your walk."
+        case .checking: return "Reply or keep moving so I know you're okay."
+        case .alert: return "No response detected — escalation triggered."
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .safe: return Theme.safe
+        case .checking: return Theme.checking
+        case .alert: return Theme.alert
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .safe: return "checkmark.shield.fill"
+        case .checking: return "clock.badge.questionmark.fill"
+        case .alert: return "exclamationmark.shield.fill"
+        }
+    }
 }
 
 /// The app's main screen and safety controller.
@@ -24,29 +74,33 @@ struct UserLocation: Identifiable {
 /// timer that escalates (alert + local notification to call campus police) when
 /// the user neither replies nor moves within `inactivityThreshold`.
 struct SafetyWatcherView: View {
-    @State private var messages: [String] = ["👋 Hi! I’ll check in with you as you walk. Reply to my messages so I know you’re safe!"]
+    @Environment(\.colorScheme) private var scheme
+
+    @State private var messages: [ChatMessage] = [
+        ChatMessage(text: "👋 Hi! I'll check in with you as you walk. Reply to my messages so I know you're safe!", isUser: false)
+    ]
     @State private var userInput: String = ""
-    @State private var isUserActive: Bool = true
     @State private var lastResponseDate = Date()
-    @ObservedObject private var locationManager = LocationManager()
+    @StateObject private var locationManager = LocationManager()
     @State private var contacts: [EmergencyContact] = UserDefaults.standard.loadContacts()
     @State private var showAddContact = false
     @State private var newContactName = ""
     @State private var newContactPhone = ""
-    @State private var lastLocation: CLLocation? = nil
     @State private var lastMovementDate = Date()
     @State private var showAutoAlert = false
     @State private var checkInTimer: Timer? = nil
     @State private var inactivityTimer: Timer? = nil
+    @State private var displayTimer: Timer? = nil
     @State private var isLoadingResponse = false
+    @State private var status: SafetyStatus = .safe
+    @State private var now = Date()
     @State private var conversation: [GeminiManager.GeminiMessage] = [
         .init(role: "user", parts: [.init(text: "You are a friendly safety companion for students walking alone at night. Keep responses short, supportive, and focused on safety.")])
     ]
     @State private var nextCheckIn: Date = Date().addingTimeInterval(60)
     let checkInInterval: TimeInterval = 60 // 1 minute
     let inactivityThreshold: TimeInterval = 120 // 2 minutes
-    var burntOrange: Color { Color(red: 191/255, green: 87/255, blue: 0/255) }
-    var lightGray: Color { Color(UIColor.systemGray6) }
+
     @State private var region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 30.285, longitude: -97.736), span: MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005))
 
     // Computed property for user location annotation
@@ -59,145 +113,29 @@ struct SafetyWatcherView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(gradient: Gradient(colors: [Color.white, burntOrange.opacity(0.08)]), startPoint: .top, endPoint: .bottom)
+            Theme.background(scheme)
                 .ignoresSafeArea()
             VStack(spacing: 0) {
-                // App Bar
-                HStack {
-                    Image(systemName: "shield.lefthalf.fill")
-                        .foregroundColor(burntOrange)
-                        .font(.title2)
-                    Text("Safety Watcher Bot")
-                        .font(.title2).fontWeight(.bold)
-                        .foregroundColor(burntOrange)
-                    Spacer()
-                }
-                .padding(.horizontal)
-                .padding(.top, 16)
-                .padding(.bottom, 8)
-                // Live Location Map
-                if !userLocationAnnotation.isEmpty {
-                    Map(coordinateRegion: $region, annotationItems: userLocationAnnotation) { location in
-                        MapMarker(coordinate: location.coordinate, tint: .blue)
+                appBar
+                ScrollView {
+                    VStack(spacing: 14) {
+                        statusHero
+                        mapCard
+                        quickActions
+                        chatCard
+                        contactsCard
                     }
-                    .frame(height: 160)
-                    .cornerRadius(16)
                     .padding(.horizontal)
-                    .padding(.bottom, 8)
-                    .onAppear {
-                        if let loc = locationManager.lastLocation {
-                            region.center = loc.coordinate
-                        }
-                    }
-                    .onChange(of: locationManager.lastLocation) { newLoc in
-                        if let newLoc = newLoc {
-                            region.center = newLoc.coordinate
-                        }
-                    }
-                } else {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.gray.opacity(0.1))
-                        .frame(height: 160)
-                        .overlay(Text("Locating... ").foregroundColor(.gray))
-                        .padding(.horizontal)
-                        .padding(.bottom, 8)
+                    .padding(.top, 4)
+                    .padding(.bottom, 16)
                 }
-                // Next Check-in Timer
-                HStack {
-                    Image(systemName: "clock")
-                        .foregroundColor(.gray)
-                    Text("Next check-in: ")
-                        .foregroundColor(.gray)
-                    Text(timerString)
-                        .fontWeight(.semibold)
-                        .foregroundColor(burntOrange)
-                    Spacer()
-                }
-                .padding(.horizontal)
-                .padding(.bottom, 4)
-                // Chat
-                ScrollViewReader { scrollProxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 12) {
-                            ForEach(Array(messages.enumerated()), id: \ .offset) { idx, msg in
-                                ChatBubble(message: msg, isUser: isUserMessage(idx: idx))
-                                    .id(idx)
-                            }
-                            if isLoadingResponse {
-                                HStack(spacing: 8) {
-                                    ProgressView()
-                                    Text("Bot is typing...")
-                                        .foregroundColor(.gray)
-                                }
-                                .padding(10)
-                            }
-                        }
-                        .padding()
-                        .onChange(of: messages.count) { _ in
-                            withAnimation { scrollProxy.scrollTo(messages.count - 1, anchor: .bottom) }
-                        }
-                    }
-                }
-                // Input
-                HStack {
-                    TextField("Type your reply...", text: $userInput)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .frame(minHeight: 44)
-                        .autocapitalization(.sentences)
-                        .disableAutocorrection(true)
-                    Button("Send") {
-                        #if DEBUG
-                        print("[SafetyWatcherView] Send button tapped")
-                        #endif
-                        sendMessage()
-                    }
-                    .disabled(userInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .padding(.leading, 8)
-                    .padding(.vertical, 6)
-                    .background(userInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray.opacity(0.3) : burntOrange)
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
-                }
-                .padding()
-                Divider()
-                // Emergency Contacts & Alert
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Emergency Contacts")
-                            .font(.headline)
-                            .foregroundColor(burntOrange)
-                        Spacer()
-                        Button(action: {
-                            #if DEBUG
-                            print("[SafetyWatcherView] Add Contact button tapped")
-                            #endif
-                            showAddContact = true
-                        }) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.title2)
-                                .foregroundColor(burntOrange)
-                        }
-                    }
-                    ForEach(contacts) { contact in
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(contact.name)
-                                Text(contact.phone).font(.caption).foregroundColor(.gray)
-                            }
-                            Spacer()
-                            Button(action: { removeContact(contact) }) {
-                                Image(systemName: "trash").foregroundColor(.red)
-                            }
-                        }
-                    }
-                }
-                .padding()
             }
         }
         .onAppear {
             locationManager.startTracking()
             startCheckInTimer()
             startInactivityTimer()
+            startDisplayTimer()
             locationManager.onMovement = {
                 lastMovementDate = Date()
                 resetInactivityTimer()
@@ -209,58 +147,329 @@ struct SafetyWatcherView: View {
             stopTimers()
             locationManager.onMovement = nil
         }
-        .fullScreenCover(isPresented: $showAddContact) {
-            VStack(spacing: 16) {
-                Text("Add Emergency Contact").font(.headline)
-                TextField("Name", text: $newContactName)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .autocapitalization(.words)
-                    .disableAutocorrection(true)
-                TextField("Phone Number", text: $newContactPhone)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .keyboardType(.phonePad)
-                    .autocapitalization(.none)
-                    .disableAutocorrection(true)
-                Button("Add") {
-                    #if DEBUG
-                    print("[SafetyWatcherView] Add Contact confirmed")
-                    #endif
-                    addContact()
-                }
-                .disabled(newContactName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || newContactPhone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .padding()
-                .background((newContactName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || newContactPhone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) ? Color.gray.opacity(0.3) : burntOrange)
-                .foregroundColor(.white)
-                .cornerRadius(8)
-                Button("Cancel") { showAddContact = false }
-                    .padding(.top, 4)
-            }
-            .padding()
-        }
+        .fullScreenCover(isPresented: $showAddContact) { addContactSheet }
         .alert("No response detected! Sending emergency alert.", isPresented: $showAutoAlert) {
             Button("OK", role: .cancel) {}
         }
     }
 
+    // MARK: - Sections
+
+    private var appBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "shield.lefthalf.fill")
+                .foregroundColor(Theme.burntOrange)
+                .font(.title2)
+            Text("SafeWalk")
+                .font(.title2).fontWeight(.heavy)
+                .foregroundColor(Theme.burntOrange)
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.top, 16)
+        .padding(.bottom, 10)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("SafeWalk")
+    }
+
+    /// The screenshot centerpiece: a large, animated safety status indicator.
+    private var statusHero: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(status.color.opacity(0.18))
+                    .frame(width: 64, height: 64)
+                Image(systemName: status.symbol)
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundColor(status.color)
+                    .symbolEffect(.pulse, options: status == .safe ? .nonRepeating : .repeating, value: status)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(status.title)
+                    .font(.title3).fontWeight(.bold)
+                    .foregroundColor(status.color)
+                Text(status.subtitle)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+        }
+        .card()
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(status.color.opacity(0.5), lineWidth: 1.5)
+        )
+        .animation(.easeInOut(duration: 0.35), value: status)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(status.title). \(status.subtitle)")
+    }
+
+    private var mapCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Live location", systemImage: "location.fill")
+                    .font(.headline)
+                    .foregroundColor(Theme.burntOrange)
+                Spacer()
+                HStack(spacing: 6) {
+                    Image(systemName: "clock")
+                    Text("Next check-in \(timerString)")
+                }
+                .font(.caption).fontWeight(.semibold)
+                .foregroundColor(.secondary)
+            }
+            if !userLocationAnnotation.isEmpty {
+                Map(coordinateRegion: $region, annotationItems: userLocationAnnotation) { location in
+                    MapMarker(coordinate: location.coordinate, tint: Theme.burntOrange)
+                }
+                .frame(height: 170)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .onAppear {
+                    if let loc = locationManager.lastLocation {
+                        region.center = loc.coordinate
+                    }
+                }
+                .onChange(of: locationManager.lastLocation) { newLoc in
+                    if let newLoc = newLoc {
+                        region.center = newLoc.coordinate
+                    }
+                }
+            } else {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.gray.opacity(0.12))
+                    .frame(height: 170)
+                    .overlay(
+                        VStack(spacing: 8) {
+                            ProgressView()
+                            Text("Locating you…")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                    )
+            }
+        }
+        .card()
+    }
+
+    /// Functional one-tap actions: confirm safety or trigger escalation now.
+    private var quickActions: some View {
+        HStack(spacing: 12) {
+            Button(action: markSafe) {
+                Label("I'm safe", systemImage: "checkmark.circle.fill")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 30)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.safe)
+            .accessibilityHint("Resets the check-in timer and lets the companion know you're okay.")
+
+            Button(action: triggerHelpNow) {
+                Label("I need help", systemImage: "sos")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 30)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.alert)
+            .accessibilityHint("Immediately sends the emergency alert and notification.")
+        }
+    }
+
+    private var chatCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Check-in chat", systemImage: "bubble.left.and.bubble.right.fill")
+                .font(.headline)
+                .foregroundColor(Theme.burntOrange)
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(messages) { msg in
+                            ChatBubble(message: msg.text, isUser: msg.isUser)
+                                .id(msg.id)
+                        }
+                        if isLoadingResponse {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text("Companion is typing…")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                            .id("typing")
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .onChange(of: messages.count) { _ in
+                        if let last = messages.last {
+                            withAnimation { scrollProxy.scrollTo(last.id, anchor: .bottom) }
+                        }
+                    }
+                }
+                .frame(height: 240)
+            }
+            inputBar
+        }
+        .card()
+    }
+
+    private var inputBar: some View {
+        HStack(spacing: 8) {
+            TextField("Type your reply…", text: $userInput)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .frame(minHeight: 44)
+                .autocapitalization(.sentences)
+                .disableAutocorrection(true)
+                .submitLabel(.send)
+                .onSubmit { if !inputIsEmpty { sendMessage() } }
+            Button(action: {
+                #if DEBUG
+                print("[SafetyWatcherView] Send button tapped")
+                #endif
+                sendMessage()
+            }) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundColor(inputIsEmpty ? Color.gray.opacity(0.4) : Theme.burntOrange)
+            }
+            .disabled(inputIsEmpty)
+            .accessibilityLabel("Send reply")
+        }
+    }
+
+    private var contactsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Emergency contacts", systemImage: "person.2.fill")
+                    .font(.headline)
+                    .foregroundColor(Theme.burntOrange)
+                Spacer()
+                Button(action: {
+                    #if DEBUG
+                    print("[SafetyWatcherView] Add Contact button tapped")
+                    #endif
+                    showAddContact = true
+                }) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(Theme.burntOrange)
+                }
+                .accessibilityLabel("Add emergency contact")
+            }
+            if contacts.isEmpty {
+                Text("Add a trusted contact so SafeWalk can offer a one-tap text to them if you stop responding.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ForEach(contacts) { contact in
+                    HStack {
+                        ZStack {
+                            Circle().fill(Theme.burntOrange.opacity(0.15)).frame(width: 36, height: 36)
+                            Text(initials(for: contact.name))
+                                .font(.caption).fontWeight(.bold)
+                                .foregroundColor(Theme.burntOrange)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(contact.name).fontWeight(.semibold)
+                            Text(contact.phone).font(.caption).foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Button(action: { removeContact(contact) }) {
+                            Image(systemName: "trash").foregroundColor(Theme.alert)
+                        }
+                        .accessibilityLabel("Remove \(contact.name)")
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .card()
+    }
+
+    private var addContactSheet: some View {
+        VStack(spacing: 16) {
+            Text("Add Emergency Contact").font(.headline)
+            TextField("Name", text: $newContactName)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .autocapitalization(.words)
+                .disableAutocorrection(true)
+            TextField("Phone Number", text: $newContactPhone)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .keyboardType(.phonePad)
+                .autocapitalization(.none)
+                .disableAutocorrection(true)
+            Button("Add") {
+                #if DEBUG
+                print("[SafetyWatcherView] Add Contact confirmed")
+                #endif
+                addContact()
+            }
+            .disabled(newContactName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || newContactPhone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .padding()
+            .frame(maxWidth: .infinity)
+            .background((newContactName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || newContactPhone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) ? Color.gray.opacity(0.3) : Theme.burntOrange)
+            .foregroundColor(.white)
+            .cornerRadius(12)
+            Button("Cancel") { showAddContact = false }
+                .padding(.top, 4)
+        }
+        .padding()
+    }
+
+    // MARK: - Helpers
+
+    private var inputIsEmpty: Bool {
+        userInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func initials(for name: String) -> String {
+        let parts = name.split(separator: " ")
+        let letters = parts.prefix(2).compactMap { $0.first }
+        return String(letters).uppercased()
+    }
+
+    private func haptic(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        UIImpactFeedbackGenerator(style: style).impactOccurred()
+    }
+
+    // MARK: - Actions
+
     func sendMessage() {
         let userMsg = userInput
-        messages.append(userMsg)
+        messages.append(ChatMessage(text: userMsg, isUser: true))
         conversation.append(.init(role: "user", parts: [.init(text: userMsg)]))
         userInput = ""
-        lastResponseDate = Date()
-        resetInactivityTimer()
+        markActivity()
+        haptic(.light)
         isLoadingResponse = true
         GeminiManager.shared.sendMessage(messages: conversation) { response in
             DispatchQueue.main.async {
                 if let reply = response {
-                    messages.append("🤖 " + reply)
+                    messages.append(ChatMessage(text: "🤖 " + reply, isUser: false))
                     conversation.append(.init(role: "model", parts: [.init(text: reply)]))
                 } else {
-                    messages.append("🤖 Sorry, I couldn't get a response right now.")
+                    messages.append(ChatMessage(text: "🤖 Sorry, I couldn't get a response right now.", isUser: false))
                 }
                 isLoadingResponse = false
             }
         }
+    }
+
+    /// Quick action: confirm safety. Resets the inactivity clock and the
+    /// check-in countdown, returns the status hero to "safe", and posts a
+    /// reassuring line from the companion.
+    func markSafe() {
+        haptic(.medium)
+        markActivity()
+        scheduleNextCheckIn()
+        messages.append(ChatMessage(text: "🤖 Great — glad you're okay! I'll keep watching.", isUser: false))
+    }
+
+    /// Quick action: escalate immediately, reusing the existing escalation path.
+    func triggerHelpNow() {
+        haptic(.heavy)
+        triggerAutoAlert()
+        sendPoliceNotification()
     }
 
     func addContact() {
@@ -277,16 +486,20 @@ struct SafetyWatcherView: View {
         UserDefaults.standard.saveContacts(contacts)
     }
 
-    // AI Chatbot logic
+    // MARK: - Safety logic
+
     func startCheckInTimer() {
         checkInTimer?.invalidate()
+        scheduleNextCheckIn()
         checkInTimer = Timer.scheduledTimer(withTimeInterval: checkInInterval, repeats: true) { _ in
-            let checkInMsg = "🤖 Just checking in! Please reply if you’re okay."
-            messages.append(checkInMsg)
+            let checkInMsg = "🤖 Just checking in! Please reply if you're okay."
+            messages.append(ChatMessage(text: checkInMsg, isUser: false))
             conversation.append(.init(role: "model", parts: [.init(text: checkInMsg)]))
-            resetInactivityTimer()
+            scheduleNextCheckIn()
+            if status == .safe { status = .checking }
         }
     }
+
     func startInactivityTimer() {
         inactivityTimer?.invalidate()
         inactivityTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
@@ -295,20 +508,50 @@ struct SafetyWatcherView: View {
             if timeSinceLastResponse > inactivityThreshold || timeSinceLastMovement > inactivityThreshold {
                 triggerAutoAlert()
                 sendPoliceNotification()
+            } else if timeSinceLastResponse > checkInInterval, status == .safe {
+                status = .checking
             }
         }
     }
-    func resetInactivityTimer() {
-        lastResponseDate = Date()
+
+    /// A 1 s ticker that advances `now` so the "Next check-in" countdown stays
+    /// live. Without it `timerString` would only update when other state
+    /// changes, leaving the displayed countdown frozen.
+    func startDisplayTimer() {
+        displayTimer?.invalidate()
+        displayTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            now = Date()
+        }
     }
+
+    /// Records user activity (a reply, an "I'm safe" tap, or movement) and
+    /// returns the status hero to a calm "safe" state.
+    func markActivity() {
+        lastResponseDate = Date()
+        if status != .alert { status = .safe }
+    }
+
+    func resetInactivityTimer() {
+        markActivity()
+    }
+
+    /// Resets the visible countdown to a full interval from now.
+    func scheduleNextCheckIn() {
+        nextCheckIn = Date().addingTimeInterval(checkInInterval)
+    }
+
     func stopTimers() {
         checkInTimer?.invalidate()
         inactivityTimer?.invalidate()
+        displayTimer?.invalidate()
     }
+
     func triggerAutoAlert() {
         showAutoAlert = true
-        resetInactivityTimer()
+        status = .alert
+        lastResponseDate = Date()
         lastMovementDate = Date()
+        scheduleNextCheckIn()
     }
 
     func requestNotificationPermission() {
@@ -358,16 +601,10 @@ struct SafetyWatcherView: View {
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
     }
 
-    // Helper to determine if a message is from the user
-    func isUserMessage(idx: Int) -> Bool {
-        // System prompt is always bot
-        if idx == 0 { return false }
-        // Even indices after the first are bot, odd are user
-        return idx % 2 == 1
-    }
-    // Timer string for next check-in
+    // Timer string for next check-in. Reads `now` (advanced by the display
+    // timer) so the countdown re-renders every second.
     var timerString: String {
-        let interval = max(0, Int(nextCheckIn.timeIntervalSinceNow))
+        let interval = max(0, Int(nextCheckIn.timeIntervalSince(now)))
         let min = interval / 60
         let sec = interval % 60
         return String(format: "%02d:%02d", min, sec)
@@ -429,21 +666,20 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
 struct ChatBubble: View {
     let message: String
     let isUser: Bool
-    var burntOrange: Color { Color(red: 191/255, green: 87/255, blue: 0/255) }
     var body: some View {
         HStack {
-            if isUser { Spacer() }
+            if isUser { Spacer(minLength: 40) }
             Text(message)
                 .padding(12)
-                .background(isUser ? burntOrange.opacity(0.9) : Color.white)
-                .foregroundColor(isUser ? .white : .black)
+                .background(isUser ? Theme.burntOrange.opacity(0.92) : Color(UIColor.secondarySystemBackground))
+                .foregroundColor(isUser ? .white : .primary)
                 .cornerRadius(16)
                 .shadow(color: .black.opacity(0.04), radius: 2, x: 0, y: 1)
                 .frame(maxWidth: 260, alignment: isUser ? .trailing : .leading)
-            if !isUser { Spacer() }
+            if !isUser { Spacer(minLength: 40) }
         }
-        .padding(isUser ? .leading : .trailing, 40)
-        .padding(.vertical, 2)
+        .padding(.vertical, 1)
+        .accessibilityLabel("\(isUser ? "You" : "Companion"): \(message)")
     }
 }
 
@@ -537,4 +773,3 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         lastLocation = newLocation
     }
 }
- 

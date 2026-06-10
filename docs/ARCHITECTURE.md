@@ -15,8 +15,13 @@ Party_WatcherApp (@main)
         │
         ▼
   SafetyWatcherView  ──────────────────────────────────────────────┐
+        │  card-based dashboard: status hero, map, quick actions,   │
+        │  check-in chat, emergency contacts. Uses Theme for color, │
+        │  surfaces (.card()), and dark-mode-aware styling.         │
+        │  Messages are modeled as ChatMessage{id,text,isUser} so   │
+        │  bubble alignment is explicit (not index-parity).         │
         │  owns / drives                                            │
-        ├── LocationManager (ObservableObject, CLLocationManagerDelegate)
+        ├── LocationManager (StateObject, CLLocationManagerDelegate)
         │        • requestWhenInUse → escalates to requestAlways
         │        • allowsBackgroundLocationUpdates (guarded on Always auth)
         │        • publishes lastLocation; fires onMovement when moved > 5 m
@@ -30,11 +35,15 @@ Party_WatcherApp (@main)
         │        • "Text <contact>"  → sms: deep link w/ help msg + Maps link
         │
         ├── Check-in timer  (60 s, repeating) ── prompts "Reply if you're okay"
+        ├── Display timer   (1 s, repeating)  ── advances the visible countdown
         └── Inactivity timer (polls every 5 s)
                  • escalates if no reply  > 120 s
                  •         OR no movement > 120 s
+                 • flips status hero safe → checking when a prompt awaits a reply
                  ▼
             triggerAutoAlert()  +  sendPoliceNotification()
+            (also reachable instantly via the "I need help" quick action;
+             "I'm safe" resets the inactivity clock + countdown and returns to safe)
                  │
                  ▼
         Escalation (UNNotification, actionable category)
@@ -95,12 +104,13 @@ background mode crashes at runtime).
 
 - **Verified in CI / locally:** the project compiles and the unit-test target
   builds and runs on the iOS Simulator with the shared scheme; Swift sources
-  are type-checked.
+  are type-checked. The test target covers the pure types — `ChatMessage`
+  sender/identity, `SafetyStatus` presentation, and `EmergencyContact`
+  `UserDefaults` round-tripping (4 tests).
 - **Needs device/simulator verification by the user:** runtime background-GPS
   delivery and lock-screen wakeups, the "Always" authorization prompt flow,
   notification delivery, and the `tel:` / `sms:` deep links (these require user
   interaction and real system services that CI does not exercise). The unit
-  test target currently contains the Xcode-generated placeholder, so 0 tests
-  execute — the test step proves the project builds + the scheme's test action
-  resolves, not behavioral coverage.
+  test target covers the pure model/presentation types; the timer-driven safety
+  flow, escalation, and UI are exercised manually in the Simulator.
 ```
