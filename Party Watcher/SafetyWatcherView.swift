@@ -746,6 +746,13 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     /// this is guarded and called after updates have started.
     private func enableBackgroundUpdatesIfPermitted() {
         guard manager.authorizationStatus == .authorizedAlways else { return }
+        // Setting `allowsBackgroundLocationUpdates = true` throws a runtime
+        // exception (SIGABRT) unless "location" is declared in the bundle's
+        // UIBackgroundModes. Verify it's actually present before enabling, so a
+        // misconfigured Info.plist degrades to foreground-only tracking instead
+        // of crashing on launch.
+        let backgroundModes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
+        guard backgroundModes.contains("location") else { return }
         manager.allowsBackgroundLocationUpdates = true
         manager.pausesLocationUpdatesAutomatically = false
     }

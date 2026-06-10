@@ -405,7 +405,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "SafeWalk uses your location, including in the background, to track your walk and to share your position with campus police or your emergency contacts if you stop responding.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "SafeWalk uses your location to show you on the map and to detect if you have stopped moving during a walk.";
-				INFOPLIST_KEY_UIBackgroundModes = location;
+				INFOPLIST_FILE = "BuildConfig/Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
@@ -445,7 +445,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "SafeWalk uses your location, including in the background, to track your walk and to share your position with campus police or your emergency contacts if you stop responding.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "SafeWalk uses your location to show you on the map and to detect if you have stopped moving during a walk.";
-				INFOPLIST_KEY_UIBackgroundModes = location;
+				INFOPLIST_FILE = "BuildConfig/Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
