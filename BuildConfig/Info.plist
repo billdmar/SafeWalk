@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Only the keys Xcode's Info.plist synthesizer cannot emit live here; the
+	  rest are generated from INFOPLIST_KEY_* build settings
+	  (GENERATE_INFOPLIST_FILE = YES merges this file on top).
+
+	  This file lives OUTSIDE the "Party Watcher/" synchronized source folder
+	  on purpose: a plist inside that folder would be auto-added to Copy Bundle
+	  Resources AND used as INFOPLIST_FILE, producing the "Multiple commands
+	  produce .../Info.plist" build error.
+
+	  UIBackgroundModes is required before CoreLocation will allow
+	  `allowsBackgroundLocationUpdates = true`; without it the app aborts at
+	  runtime. `INFOPLIST_KEY_UIBackgroundModes` is NOT a synthesized key, so
+	  it was silently dropped — hence this explicit file.
+	-->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
+</dict>
+</plist>
