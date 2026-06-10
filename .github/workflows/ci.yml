@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & Test (iOS Simulator)
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show versions
+        run: |
+          xcodebuild -version
+          swift --version
+
+      # Secrets.swift (holding the Gemini API key) is gitignored. CI writes a
+      # placeholder with an empty key so the project compiles; no network call
+      # is exercised during a build/unit-test run.
+      - name: Write stub Secrets.swift
+        run: |
+          cat > "Party Watcher/Secrets.swift" <<'SWIFT'
+          import Foundation
+          // CI placeholder — real key is provided locally and gitignored.
+          enum Secrets {
+              static let geminiAPIKey = ""
+          }
+          SWIFT
+
+      - name: Build & test
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project "Party Watcher.xcodeproj" \
+            -scheme "Party Watcher" \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,OS=latest,name=iPhone 16 Pro' \
+            -derivedDataPath .build/DerivedData \
+            -only-testing:"Party WatcherTests" \
+            CODE_SIGNING_ALLOWED=NO
