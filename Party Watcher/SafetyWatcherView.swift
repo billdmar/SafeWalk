@@ -314,18 +314,48 @@ struct SafetyWatcherView: View {
     func requestNotificationPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
+
+    /// Builds the escalation notification. If the user has saved at least one
+    /// emergency contact, the first contact is wired into both the notification
+    /// body and an actionable "Text <name>" button (SMS deep link with a
+    /// prefilled help message + the last known location). The "Call UT Police"
+    /// action is always present, so escalation reaches the contact *and* UTPD
+    /// when a contact exists, and falls back to UTPD only when none is saved.
     func sendPoliceNotification() {
+        // The most recently loaded contacts; the first is treated as primary.
+        let primaryContact = contacts.first
+        // Hand the delegate the data it needs to place the call / SMS from a
+        // notification action tap. Retained as a singleton so the action fires.
+        NotificationDelegate.shared.primaryContact = primaryContact
+        NotificationDelegate.shared.lastCoordinate = locationManager.lastLocation?.coordinate
+
         let content = UNMutableNotificationContent()
         content.title = "No response detected!"
-        content.body = "Tap to call UT Austin Police (512-471-4441) immediately."
+        if let contact = primaryContact {
+            content.body = "Tap to call UT Austin Police (512-471-4441) or text \(contact.name) immediately."
+        } else {
+            content.body = "Tap to call UT Austin Police (512-471-4441) immediately."
+        }
         content.sound = .default
-        content.categoryIdentifier = "CALL_UTPD"
+        content.categoryIdentifier = primaryContact == nil ? "CALL_UTPD" : "ESCALATE"
+
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
+
         let callAction = UNNotificationAction(identifier: "CALL_UTPD_ACTION", title: "Call UT Police", options: .foreground)
-        let category = UNNotificationCategory(identifier: "CALL_UTPD", actions: [callAction], intentIdentifiers: [], options: [])
-        UNUserNotificationCenter.current().setNotificationCategories([category])
-        UNUserNotificationCenter.current().delegate = NotificationDelegate()
+        var actions = [callAction]
+        if let contact = primaryContact {
+            let textContactAction = UNNotificationAction(
+                identifier: "TEXT_CONTACT_ACTION",
+                title: "Text \(contact.name)",
+                options: .foreground
+            )
+            actions.insert(textContactAction, at: 0)
+        }
+        let utpdCategory = UNNotificationCategory(identifier: "CALL_UTPD", actions: [callAction], intentIdentifiers: [], options: [])
+        let escalateCategory = UNNotificationCategory(identifier: "ESCALATE", actions: actions, intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([utpdCategory, escalateCategory])
+        UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
     }
 
     // Helper to determine if a message is from the user
@@ -344,16 +374,54 @@ struct SafetyWatcherView: View {
     }
 }
 
-/// Handles taps on the actionable emergency notification, placing a `tel://`
-/// call to campus police when the user chooses the "Call UT Police" action.
+/// Handles taps on the actionable emergency notification. Placing a `tel://`
+/// call to campus police on "Call UT Police", or composing an `sms:` to the
+/// user's primary emergency contact (prefilled with a help message and the last
+/// known location) on "Text <name>".
+///
+/// A shared singleton so it outlives the notification and so the escalation code
+/// can hand it the current contact + coordinate before posting the notification.
 class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = NotificationDelegate()
+
+    /// The contact to text when the user taps the contact action. Set by the
+    /// escalation code right before a notification is posted.
+    var primaryContact: EmergencyContact?
+    /// The most recent known coordinate, embedded into the SMS body if present.
+    var lastCoordinate: CLLocationCoordinate2D?
+
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
-        if response.actionIdentifier == "CALL_UTPD_ACTION" {
+        switch response.actionIdentifier {
+        case "CALL_UTPD_ACTION":
             if let url = URL(string: "tel://5124714441") {
                 UIApplication.shared.open(url)
             }
+        case "TEXT_CONTACT_ACTION":
+            if let url = smsURL(for: primaryContact) {
+                UIApplication.shared.open(url)
+            }
+        default:
+            break
         }
         completionHandler()
+    }
+
+    /// Builds an `sms:` deep link to the contact's number with a prefilled body
+    /// that includes a help message and, when available, a Maps link to the
+    /// user's last known location.
+    private func smsURL(for contact: EmergencyContact?) -> URL? {
+        guard let contact = contact else { return nil }
+        let digits = contact.phone.filter { $0.isNumber || $0 == "+" }
+        guard !digits.isEmpty else { return nil }
+        var body = "I may need help. This is SafeWalk reaching out on my behalf — please check on me."
+        if let coord = lastCoordinate {
+            body += " My last location: https://maps.apple.com/?ll=\(coord.latitude),\(coord.longitude)"
+        }
+        var components = URLComponents()
+        components.scheme = "sms"
+        components.path = digits
+        components.queryItems = [URLQueryItem(name: "body", value: body)]
+        return components.url
     }
 }
 
@@ -396,10 +464,16 @@ extension UserDefaults {
 
 /// Publishes the user's live location and reports significant movement.
 ///
-/// Wraps `CLLocationManager`, requests when-in-use authorization, and publishes
-/// `lastLocation` for the map. When the user moves more than 5 metres between
+/// Wraps `CLLocationManager`, requests *always* authorization (escalating from
+/// when-in-use so the user sees the standard two-step iOS prompt), and publishes
+/// `lastLocation` for the map. Once "Always" is granted it enables background
+/// location updates so SafeWalk can keep watching even when the screen is locked
+/// or the app is backgrounded. When the user moves more than 5 metres between
 /// updates it fires `onMovement`, which the safety logic uses to reset the
 /// inactivity timer.
+///
+/// Note: background GPS delivery, the "Always" prompt, and lock-screen wakeups
+/// are verified on a device/simulator, not in CI.
 class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     @Published var lastLocation: CLLocation?
@@ -408,14 +482,50 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.pausesLocationUpdatesAutomatically = false
     }
     func startTracking() {
-        manager.requestWhenInUseAuthorization()
+        // Request the strongest authorization available. iOS first surfaces the
+        // when-in-use prompt and then offers the upgrade to "Always", which is
+        // what background tracking requires.
+        switch manager.authorizationStatus {
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+        case .authorizedWhenInUse:
+            manager.requestAlwaysAuthorization()
+        default:
+            break
+        }
         manager.startUpdatingLocation()
+        enableBackgroundUpdatesIfPermitted()
     }
     func stopTracking() {
+        manager.allowsBackgroundLocationUpdates = false
         manager.stopUpdatingLocation()
     }
+
+    /// Enables background location updates, but only once the user has granted
+    /// "Always" authorization. Setting `allowsBackgroundLocationUpdates = true`
+    /// without the location background mode + always auth crashes at runtime, so
+    /// this is guarded and called after updates have started.
+    private func enableBackgroundUpdatesIfPermitted() {
+        guard manager.authorizationStatus == .authorizedAlways else { return }
+        manager.allowsBackgroundLocationUpdates = true
+        manager.pausesLocationUpdatesAutomatically = false
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        switch manager.authorizationStatus {
+        case .authorizedWhenInUse:
+            // Escalate to Always so background tracking can be enabled.
+            manager.requestAlwaysAuthorization()
+        case .authorizedAlways:
+            enableBackgroundUpdatesIfPermitted()
+        default:
+            break
+        }
+    }
+
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         let newLocation = locations.last
         if let last = lastLocation, let newLoc = newLocation {
@@ -426,5 +536,5 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
         lastLocation = newLocation
     }
-} 
+}
  
