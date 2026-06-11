@@ -20,6 +20,10 @@ Each item below corresponds to a reviewed pull request.
 - **Resilient Gemini calls** — a request timeout, one automatic retry on
   transient network/server failures (5xx / 429 / network blips), an empty-key
   fast-fail, and a typed `GeminiError` so the UI can fail gracefully offline.
+- **Deterministic chat quick replies** — a row of tappable canned replies under
+  the chat. Each posts a fixed user message + companion response (no network
+  call) and carries a safety effect (`reassure` / `neutral` / `escalate`). Pure
+  `QuickReplies` catalog with regression tests; feels AI-like, fully deterministic.
 - **Accessibility** — Reduce Motion support for the status hero, a distinct
   error haptic on automatic escalation, and Dynamic Type-friendly chat bubbles.
 - **`docs/SECURITY-REVIEW.md`** — a security & privacy review (PII handling, key
@@ -35,9 +39,10 @@ Each item below corresponds to a reviewed pull request.
   warnings.
 
 ### Testing
-- Test coverage grew from **4** to **31** unit tests across 4 suites
+- Test coverage grew from **4** to **37** unit tests across 5 suites
   (`SafetyEngine`, `Escalation`, `WalkSession`/`WalkTimer`, `GeminiManager`
-  classification), all network-free and run on the iOS Simulator in CI.
+  classification, `QuickReplies`), all network-free and run on the iOS Simulator
+  in CI.
 
 ### Known limitations (carried forward — see SECURITY-REVIEW.md)
 - Escalation requires the user to tap the notification action; nothing is sent

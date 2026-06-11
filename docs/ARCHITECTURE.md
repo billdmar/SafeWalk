@@ -27,6 +27,8 @@ Party_WatcherApp (@main)
         │    • WalkSession/WalkTimer — ETA + overrun rule (tested)  │
         │    • Escalation    — sms:/tel: + group-SMS builders,      │
         │                      phone normalization (tested)         │
+        │    • QuickReplies  — deterministic canned chat replies    │
+        │                      + label→effect mapping (tested)      │
         │  owns / drives                                            │
         ├── LocationManager (StateObject, CLLocationManagerDelegate)
         │        • requestWhenInUse → escalates to requestAlways
@@ -112,11 +114,12 @@ background mode crashes at runtime).
 - **Verified in CI / locally:** the project compiles and the unit-test target
   builds and runs on the iOS Simulator with the shared scheme; Swift sources
   are type-checked. The test target covers the pure types and decision logic
-  (**31 tests across 4 suites**): `ChatMessage` sender/identity, `SafetyStatus`
+  (**37 tests across 5 suites**): `ChatMessage` sender/identity, `SafetyStatus`
   presentation, `EmergencyContact` round-tripping, the `SafetyEngine` escalation
   decision + movement rule + countdown clamp, the `WalkSession`/`WalkTimer`
-  overrun rule, the `Escalation` deep-link + group-SMS builders, and
-  `GeminiManager`'s status-code/retry classification (network-free).
+  overrun rule, the `Escalation` deep-link + group-SMS builders,
+  `GeminiManager`'s status-code/retry classification, and the `QuickReplies`
+  catalog + label→effect mapping (all network-free).
 - **Needs device/simulator verification by the user:** runtime background-GPS
   delivery and lock-screen wakeups, the "Always" authorization prompt flow,
   notification delivery, and the `tel:` / `sms:` deep links (these require user
