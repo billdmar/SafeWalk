@@ -378,9 +378,38 @@ struct SafetyWatcherView: View {
                 }
                 .frame(height: 240)
             }
+            quickReplyRow
             inputBar
         }
         .card()
+    }
+
+    /// A horizontal row of deterministic quick-reply buttons. Tapping one posts
+    /// a canned exchange (and may confirm safety or escalate) without any network
+    /// call — the chat stays conversational even offline.
+    private var quickReplyRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(QuickReplies.all) { reply in
+                    Button(action: { tapQuickReply(reply) }) {
+                        Text(reply.label)
+                            .font(.subheadline).fontWeight(.medium)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(
+                                Capsule().fill(reply.effect == .escalate
+                                               ? Theme.alert.opacity(0.15)
+                                               : Theme.burntOrange.opacity(0.12))
+                            )
+                            .foregroundColor(reply.effect == .escalate ? Theme.alert : Theme.burntOrange)
+                    }
+                    .accessibilityHint(reply.effect == .escalate
+                                       ? "Sends a distress message and escalates immediately."
+                                       : "Sends a quick reply to the companion.")
+                }
+            }
+            .padding(.vertical, 2)
+        }
     }
 
     private var inputBar: some View {
@@ -574,6 +603,26 @@ struct SafetyWatcherView: View {
                 }
                 isLoadingResponse = false
             }
+        }
+    }
+
+    /// Handles a tap on a deterministic quick-reply button: posts the canned
+    /// user message and the fixed companion response (no network call), then
+    /// applies the reply's safety effect — confirm safety, do nothing, or
+    /// escalate. Feels like the AI is responding, but it's fully deterministic.
+    func tapQuickReply(_ reply: QuickReply) {
+        messages.append(ChatMessage(text: reply.label, isUser: true))
+        messages.append(ChatMessage(text: "🤖 " + reply.botResponse, isUser: false))
+        switch reply.effect {
+        case .reassure:
+            haptic(.light)
+            markActivity()
+            scheduleNextCheckIn()
+        case .neutral:
+            haptic(.light)
+            markActivity()
+        case .escalate:
+            triggerHelpNow()
         }
     }
 
