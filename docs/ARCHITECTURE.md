@@ -15,11 +15,18 @@ Party_WatcherApp (@main)
         │
         ▼
   SafetyWatcherView  ──────────────────────────────────────────────┐
-        │  card-based dashboard: status hero, map, quick actions,   │
-        │  check-in chat, emergency contacts. Uses Theme for color, │
-        │  surfaces (.card()), and dark-mode-aware styling.         │
+        │  card-based dashboard: status hero, map, walk timer,      │
+        │  quick actions, check-in chat, emergency contacts. Uses   │
+        │  Theme for color, surfaces (.card()), dark-mode-aware     │
+        │  styling, Reduce Motion + Dynamic Type support.           │
         │  Messages are modeled as ChatMessage{id,text,isUser} so   │
         │  bubble alignment is explicit (not index-parity).         │
+        │  Pure decision logic is delegated to:                     │
+        │    • SafetyEngine  — escalation decision, movement rule,  │
+        │                      mm:ss countdown (tested)             │
+        │    • WalkSession/WalkTimer — ETA + overrun rule (tested)  │
+        │    • Escalation    — sms:/tel: + group-SMS builders,      │
+        │                      phone normalization (tested)         │
         │  owns / drives                                            │
         ├── LocationManager (StateObject, CLLocationManagerDelegate)
         │        • requestWhenInUse → escalates to requestAlways
@@ -104,9 +111,12 @@ background mode crashes at runtime).
 
 - **Verified in CI / locally:** the project compiles and the unit-test target
   builds and runs on the iOS Simulator with the shared scheme; Swift sources
-  are type-checked. The test target covers the pure types — `ChatMessage`
-  sender/identity, `SafetyStatus` presentation, and `EmergencyContact`
-  `UserDefaults` round-tripping (4 tests).
+  are type-checked. The test target covers the pure types and decision logic
+  (**31 tests across 4 suites**): `ChatMessage` sender/identity, `SafetyStatus`
+  presentation, `EmergencyContact` round-tripping, the `SafetyEngine` escalation
+  decision + movement rule + countdown clamp, the `WalkSession`/`WalkTimer`
+  overrun rule, the `Escalation` deep-link + group-SMS builders, and
+  `GeminiManager`'s status-code/retry classification (network-free).
 - **Needs device/simulator verification by the user:** runtime background-GPS
   delivery and lock-screen wakeups, the "Always" authorization prompt flow,
   notification delivery, and the `tel:` / `sms:` deep links (these require user
