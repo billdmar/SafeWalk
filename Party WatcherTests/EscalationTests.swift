@@ -60,6 +60,37 @@ struct EscalationTests {
         #expect(Escalation.smsURL(phone: "garbage", coordinate: nil) == nil)
     }
 
+    // MARK: - Group SMS (multi-contact escalation)
+
+    @Test func groupSMSURLAddressesAllDialableContacts() {
+        let url = Escalation.groupSMSURL(phones: ["512-555-0100", "+1 (737) 555-0199"], coordinate: nil)
+        #expect(url?.scheme == "sms")
+        // Both numbers, comma-joined, drive iOS's group compose.
+        #expect(url?.absoluteString.contains("5125550100,+17375550199") == true)
+        #expect(url?.query?.contains("body=") == true)
+    }
+
+    /// A single bad entry is dropped, not allowed to suppress escalation to the
+    /// others — the safety-critical fail-safe.
+    @Test func groupSMSURLSkipsUndialableButKeepsValidOnes() {
+        let url = Escalation.groupSMSURL(phones: ["garbage", "512-555-0100"], coordinate: nil)
+        #expect(url != nil)
+        #expect(url?.absoluteString.contains("5125550100") == true)
+        #expect(url?.absoluteString.contains("garbage") == false)
+    }
+
+    /// Only when *no* contact is dialable does the group URL fail (caller falls
+    /// back to UTPD-only).
+    @Test func groupSMSURLNilWhenNoDialableContacts() {
+        #expect(Escalation.groupSMSURL(phones: ["garbage", "", "+"], coordinate: nil) == nil)
+        #expect(Escalation.groupSMSURL(phones: [], coordinate: nil) == nil)
+    }
+
+    @Test func dialableCountIgnoresUndialableEntries() {
+        #expect(Escalation.dialableCount(in: ["512-555-0100", "garbage", "+1 737 555 0199"]) == 2)
+        #expect(Escalation.dialableCount(in: []) == 0)
+    }
+
     // MARK: - UTPD call
 
     @Test func utpdCallURLIsValidTelLink() {
