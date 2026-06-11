@@ -75,6 +75,9 @@ enum SafetyStatus {
 /// the user neither replies nor moves within `inactivityThreshold`.
 struct SafetyWatcherView: View {
     @Environment(\.colorScheme) private var scheme
+    /// Honor the system "Reduce Motion" setting — when on, the status hero stops
+    /// pulsing so the animation doesn't bother motion-sensitive users.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var messages: [ChatMessage] = [
         ChatMessage(text: "👋 Hi! I'll check in with you as you walk. Reply to my messages so I know you're safe!", isUser: false)
@@ -108,7 +111,13 @@ struct SafetyWatcherView: View {
     @State private var walkDestination = ""
     @State private var walkMinutes = 15
 
-    @State private var region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 30.285, longitude: -97.736), span: MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005))
+    /// The map camera. Starts framed on campus and recenters on the user once a
+    /// fix arrives. Uses the modern `MapCameraPosition` API (iOS 17+) rather than
+    /// the deprecated `MKCoordinateRegion` binding.
+    @State private var cameraPosition: MapCameraPosition = .region(
+        MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 30.285, longitude: -97.736),
+                           span: MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005))
+    )
 
     // Computed property for user location annotation
     var userLocationAnnotation: [UserLocation] {
@@ -191,7 +200,9 @@ struct SafetyWatcherView: View {
                 Image(systemName: status.symbol)
                     .font(.system(size: 28, weight: .semibold))
                     .foregroundColor(status.color)
-                    .symbolEffect(.pulse, options: status == .safe ? .nonRepeating : .repeating, value: status)
+                    .symbolEffect(.pulse,
+                                  options: (status == .safe || reduceMotion) ? .nonRepeating : .repeating,
+                                  value: status)
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(status.title)
@@ -228,21 +239,17 @@ struct SafetyWatcherView: View {
                 .font(.caption).fontWeight(.semibold)
                 .foregroundColor(.secondary)
             }
-            if !userLocationAnnotation.isEmpty {
-                Map(coordinateRegion: $region, annotationItems: userLocationAnnotation) { location in
-                    MapMarker(coordinate: location.coordinate, tint: Theme.burntOrange)
+            if let userLocation = userLocationAnnotation.first {
+                Map(position: $cameraPosition) {
+                    Marker("You", systemImage: "figure.walk", coordinate: userLocation.coordinate)
+                        .tint(Theme.burntOrange)
                 }
                 .frame(height: 170)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .onAppear {
-                    if let loc = locationManager.lastLocation {
-                        region.center = loc.coordinate
-                    }
-                }
-                .onChange(of: locationManager.lastLocation) { newLoc in
-                    if let newLoc = newLoc {
-                        region.center = newLoc.coordinate
-                    }
+                .accessibilityLabel("Map showing your live location")
+                .onAppear { recenter(on: locationManager.lastLocation?.coordinate) }
+                .onChange(of: locationManager.lastLocation) { _, newLoc in
+                    recenter(on: newLoc?.coordinate)
                 }
             } else {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -363,7 +370,7 @@ struct SafetyWatcherView: View {
                         }
                     }
                     .padding(.vertical, 4)
-                    .onChange(of: messages.count) { _ in
+                    .onChange(of: messages.count) {
                         if let last = messages.last {
                             withAnimation { scrollProxy.scrollTo(last.id, anchor: .bottom) }
                         }
@@ -532,6 +539,21 @@ struct SafetyWatcherView: View {
         UIImpactFeedbackGenerator(style: style).impactOccurred()
     }
 
+    /// A distinct error/escalation haptic so an automatic alert is *felt*, not
+    /// only seen — important when the phone is in a pocket during a walk.
+    private func escalationHaptic() {
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+    }
+
+    /// Recenters the map camera on a coordinate, keeping the existing zoom.
+    private func recenter(on coordinate: CLLocationCoordinate2D?) {
+        guard let coordinate else { return }
+        cameraPosition = .region(
+            MKCoordinateRegion(center: coordinate,
+                               span: MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005))
+        )
+    }
+
     // MARK: - Actions
 
     func sendMessage() {
@@ -593,8 +615,8 @@ struct SafetyWatcherView: View {
     }
 
     /// Quick action: escalate immediately, reusing the existing escalation path.
+    /// `triggerAutoAlert` owns the escalation haptic, so this doesn't add its own.
     func triggerHelpNow() {
-        haptic(.heavy)
         triggerAutoAlert()
         sendPoliceNotification()
     }
@@ -692,6 +714,7 @@ struct SafetyWatcherView: View {
     }
 
     func triggerAutoAlert() {
+        escalationHaptic()
         showAutoAlert = true
         status = .alert
         lastResponseDate = Date()
@@ -798,12 +821,16 @@ struct ChatBubble: View {
         HStack {
             if isUser { Spacer(minLength: 40) }
             Text(message)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(12)
                 .background(isUser ? Theme.burntOrange.opacity(0.92) : Color(UIColor.secondarySystemBackground))
                 .foregroundColor(isUser ? .white : .primary)
                 .cornerRadius(16)
                 .shadow(color: .black.opacity(0.04), radius: 2, x: 0, y: 1)
-                .frame(maxWidth: 260, alignment: isUser ? .trailing : .leading)
+                // Cap the bubble at ~75% of the row so long replies wrap instead
+                // of clipping — but let it grow with Dynamic Type rather than a
+                // fixed 260 pt that truncated at large accessibility sizes.
+                .frame(maxWidth: 300, alignment: isUser ? .trailing : .leading)
             if !isUser { Spacer(minLength: 40) }
         }
         .padding(.vertical, 1)
