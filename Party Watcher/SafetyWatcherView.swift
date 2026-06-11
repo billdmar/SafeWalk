@@ -101,6 +101,13 @@ struct SafetyWatcherView: View {
     let checkInInterval: TimeInterval = 60 // 1 minute
     let inactivityThreshold: TimeInterval = 120 // 2 minutes
 
+    // Walk timer / ETA: an optional active walk to a destination. When set, the
+    // inactivity poll also escalates if the walk runs past its expected arrival.
+    @State private var walkSession: WalkSession? = nil
+    @State private var showStartWalk = false
+    @State private var walkDestination = ""
+    @State private var walkMinutes = 15
+
     @State private var region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 30.285, longitude: -97.736), span: MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005))
 
     // Computed property for user location annotation
@@ -121,6 +128,7 @@ struct SafetyWatcherView: View {
                     VStack(spacing: 14) {
                         statusHero
                         mapCard
+                        walkCard
                         quickActions
                         chatCard
                         contactsCard
@@ -148,6 +156,7 @@ struct SafetyWatcherView: View {
             locationManager.onMovement = nil
         }
         .fullScreenCover(isPresented: $showAddContact) { addContactSheet }
+        .sheet(isPresented: $showStartWalk) { startWalkSheet }
         .alert("No response detected! Sending emergency alert.", isPresented: $showAutoAlert) {
             Button("OK", role: .cancel) {}
         }
@@ -250,6 +259,61 @@ struct SafetyWatcherView: View {
             }
         }
         .card()
+    }
+
+    /// The walk timer / ETA card. When no walk is active it offers a "Start a
+    /// walk" button; while a walk is in progress it shows the destination, a
+    /// live countdown to the expected arrival, and an "I've arrived" button that
+    /// ends the walk safely. If the walk runs past its ETA without arriving, the
+    /// inactivity poll escalates.
+    private var walkCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Walk timer", systemImage: "figure.walk")
+                .font(.headline)
+                .foregroundColor(Theme.burntOrange)
+            if let session = walkSession {
+                let overdue = session.isOverdue(at: now)
+                HStack(spacing: 12) {
+                    Image(systemName: overdue ? "exclamationmark.triangle.fill" : "location.north.line.fill")
+                        .font(.title3)
+                        .foregroundColor(overdue ? Theme.alert : Theme.safe)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Walking to \(session.destination)")
+                            .fontWeight(.semibold)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(overdue
+                             ? "Past your expected arrival — escalating if you don't arrive."
+                             : "Arrive in \(SafetyEngine.countdownString(secondsRemaining: session.secondsRemaining(at: now)))")
+                            .font(.caption)
+                            .foregroundColor(overdue ? Theme.alert : .secondary)
+                    }
+                    Spacer()
+                }
+                Button(action: arriveSafely) {
+                    Label("I've arrived", systemImage: "flag.checkered")
+                        .font(.subheadline).fontWeight(.semibold)
+                        .frame(maxWidth: .infinity, minHeight: 30)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.safe)
+                .accessibilityHint("Ends the walk timer and confirms you reached \(session.destination).")
+            } else {
+                Text("Heading somewhere? Start a timed walk and SafeWalk will escalate if you don't arrive by your ETA.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(action: { showStartWalk = true }) {
+                    Label("Start a walk", systemImage: "figure.walk.departure")
+                        .font(.subheadline).fontWeight(.semibold)
+                        .frame(maxWidth: .infinity, minHeight: 30)
+                }
+                .buttonStyle(.bordered)
+                .tint(Theme.burntOrange)
+                .accessibilityHint("Set a destination and expected duration.")
+            }
+        }
+        .card()
+        .accessibilityElement(children: .contain)
     }
 
     /// Functional one-tap actions: confirm safety or trigger escalation now.
@@ -416,6 +480,42 @@ struct SafetyWatcherView: View {
         .padding()
     }
 
+    private var startWalkSheet: some View {
+        NavigationView {
+            Form {
+                Section("Where are you headed?") {
+                    TextField("Destination (e.g. Jester dorm)", text: $walkDestination)
+                        .autocapitalization(.words)
+                        .disableAutocorrection(true)
+                }
+                Section("How long should it take?") {
+                    Picker("Expected duration", selection: $walkMinutes) {
+                        ForEach(WalkTimer.presetMinutes, id: \.self) { mins in
+                            Text("\(mins) min").tag(mins)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+                Section {
+                    Text("If you haven't tapped “I've arrived” by then, SafeWalk escalates — alerting your contact and offering a call to UT Police.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .navigationTitle("Start a walk")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showStartWalk = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Start") { startWalk() }
+                        .disabled(walkDestination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     private var inputIsEmpty: Bool {
@@ -465,6 +565,33 @@ struct SafetyWatcherView: View {
         messages.append(ChatMessage(text: "🤖 Great — glad you're okay! I'll keep watching.", isUser: false))
     }
 
+    /// Begins a timed walk to the entered destination for the chosen duration.
+    /// Marks activity so the walk starts from a calm "safe" state and dismisses
+    /// the sheet.
+    func startWalk() {
+        let name = walkDestination.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        walkSession = WalkSession(destination: name,
+                                  startDate: Date(),
+                                  expectedDuration: TimeInterval(walkMinutes * 60))
+        walkDestination = ""
+        showStartWalk = false
+        markActivity()
+        haptic(.medium)
+        messages.append(ChatMessage(text: "🤖 Walk to \(name) started — I'll watch the clock. Tap “I've arrived” when you get there.", isUser: false))
+    }
+
+    /// Ends the active walk safely (the user reached their destination). Clears
+    /// the session and resets the safety clocks, the same as marking safe.
+    func arriveSafely() {
+        guard let session = walkSession else { return }
+        walkSession = nil
+        haptic(.medium)
+        markActivity()
+        scheduleNextCheckIn()
+        messages.append(ChatMessage(text: "🤖 Glad you made it to \(session.destination) safely! 🎉", isUser: false))
+    }
+
     /// Quick action: escalate immediately, reusing the existing escalation path.
     func triggerHelpNow() {
         haptic(.heavy)
@@ -503,6 +630,17 @@ struct SafetyWatcherView: View {
     func startInactivityTimer() {
         inactivityTimer?.invalidate()
         inactivityTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
+            // A walk that runs past its ETA escalates regardless of recent
+            // movement — the user may be moving but in the wrong place / under
+            // duress. Clear the session so the overrun escalates once, then the
+            // standard inactivity watcher governs any continued non-response.
+            if WalkTimer.decide(session: walkSession, now: Date()) == .escalateOverdue {
+                walkSession = nil
+                messages.append(ChatMessage(text: "🤖 You didn't arrive in time — escalating now.", isUser: false))
+                triggerAutoAlert()
+                sendPoliceNotification()
+                return
+            }
             let decision = SafetyEngine.decide(
                 timeSinceLastResponse: Date().timeIntervalSince(lastResponseDate),
                 timeSinceLastMovement: Date().timeIntervalSince(lastMovementDate),
