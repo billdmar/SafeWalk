@@ -60,6 +60,31 @@ enum Escalation {
         return components.url
     }
 
+    /// Builds a *group* `sms:` deep link to every contact whose number is
+    /// dialable, prefilled with the help body. Undialable numbers are dropped
+    /// rather than aborting the whole send, so one bad entry can't suppress
+    /// escalation to the others. Returns `nil` only when *no* contact has a
+    /// dialable number — the fail-safe case the caller falls back from.
+    ///
+    /// iOS opens a group compose when the `sms:` recipient list is comma-
+    /// separated (e.g. `sms:5551230,5551231?body=…`).
+    static func groupSMSURL(phones: [String], coordinate: CLLocationCoordinate2D?) -> URL? {
+        let dialable = phones.compactMap { dialableDigits(from: $0) }
+        guard !dialable.isEmpty else { return nil }
+        var components = URLComponents()
+        components.scheme = "sms"
+        components.path = dialable.joined(separator: ",")
+        components.queryItems = [URLQueryItem(name: "body", value: smsBody(coordinate: coordinate))]
+        return components.url
+    }
+
+    /// How many of the supplied numbers are actually dialable. Lets the UI /
+    /// notification copy say "Text 3 contacts" truthfully (and the caller decide
+    /// between the single- and group-text action).
+    static func dialableCount(in phones: [String]) -> Int {
+        phones.compactMap { dialableDigits(from: $0) }.count
+    }
+
     /// The `tel:` URL for UTPD. Static and always valid; provided as a function
     /// so the call site has a single source of truth.
     static func utpdCallURL() -> URL? {

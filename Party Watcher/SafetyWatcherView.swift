@@ -703,42 +703,46 @@ struct SafetyWatcherView: View {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
 
-    /// Builds the escalation notification. If the user has saved at least one
-    /// emergency contact, the first contact is wired into both the notification
-    /// body and an actionable "Text <name>" button (SMS deep link with a
-    /// prefilled help message + the last known location). The "Call UT Police"
-    /// action is always present, so escalation reaches the contact *and* UTPD
-    /// when a contact exists, and falls back to UTPD only when none is saved.
+    /// Builds the escalation notification. When the user has saved emergency
+    /// contacts, the alert offers a single "Text <n> contacts" action that opens
+    /// a group SMS to *every* contact with a dialable number (prefilled with a
+    /// help message + last known location) — not just the first. The "Call UT
+    /// Police" action is always present, so escalation reaches the contacts *and*
+    /// UTPD when contacts exist, and falls back to UTPD only when none is saved.
     func sendPoliceNotification() {
-        // The most recently loaded contacts; the first is treated as primary.
-        let primaryContact = contacts.first
-        // Hand the delegate the data it needs to place the call / SMS from a
-        // notification action tap. Retained as a singleton so the action fires.
-        NotificationDelegate.shared.primaryContact = primaryContact
+        // Hand the delegate the data it needs to place the call / group SMS from
+        // a notification action tap. Retained as a singleton so the action fires.
+        NotificationDelegate.shared.contacts = contacts
         NotificationDelegate.shared.lastCoordinate = locationManager.lastLocation?.coordinate
+
+        // Count only contacts we can actually text, so the copy is truthful and
+        // we don't offer a text action that would open an empty group compose.
+        let textableCount = Escalation.dialableCount(in: contacts.map(\.phone))
 
         let content = UNMutableNotificationContent()
         content.title = "No response detected!"
-        if let contact = primaryContact {
-            content.body = "Tap to call UT Austin Police (\(Escalation.utpdDisplayNumber)) or text \(contact.name) immediately."
+        if textableCount > 0 {
+            let noun = textableCount == 1 ? "contact" : "contacts"
+            content.body = "Tap to call UT Austin Police (\(Escalation.utpdDisplayNumber)) or text your \(textableCount) emergency \(noun) immediately."
         } else {
             content.body = "Tap to call UT Austin Police (\(Escalation.utpdDisplayNumber)) immediately."
         }
         content.sound = .default
-        content.categoryIdentifier = primaryContact == nil ? "CALL_UTPD" : "ESCALATE"
+        content.categoryIdentifier = textableCount > 0 ? "ESCALATE" : "CALL_UTPD"
 
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
 
         let callAction = UNNotificationAction(identifier: "CALL_UTPD_ACTION", title: "Call UT Police", options: .foreground)
         var actions = [callAction]
-        if let contact = primaryContact {
-            let textContactAction = UNNotificationAction(
-                identifier: "TEXT_CONTACT_ACTION",
-                title: "Text \(contact.name)",
+        if textableCount > 0 {
+            let noun = textableCount == 1 ? "contact" : "contacts"
+            let textContactsAction = UNNotificationAction(
+                identifier: "TEXT_CONTACTS_ACTION",
+                title: "Text \(textableCount) \(noun)",
                 options: .foreground
             )
-            actions.insert(textContactAction, at: 0)
+            actions.insert(textContactsAction, at: 0)
         }
         let utpdCategory = UNNotificationCategory(identifier: "CALL_UTPD", actions: [callAction], intentIdentifiers: [], options: [])
         let escalateCategory = UNNotificationCategory(identifier: "ESCALATE", actions: actions, intentIdentifiers: [], options: [])
@@ -754,18 +758,18 @@ struct SafetyWatcherView: View {
 }
 
 /// Handles taps on the actionable emergency notification. Placing a `tel://`
-/// call to campus police on "Call UT Police", or composing an `sms:` to the
-/// user's primary emergency contact (prefilled with a help message and the last
-/// known location) on "Text <name>".
+/// call to campus police on "Call UT Police", or composing a *group* `sms:` to
+/// every saved emergency contact (prefilled with a help message and the last
+/// known location) on "Text <n> contacts".
 ///
 /// A shared singleton so it outlives the notification and so the escalation code
-/// can hand it the current contact + coordinate before posting the notification.
+/// can hand it the current contacts + coordinate before posting the notification.
 class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationDelegate()
 
-    /// The contact to text when the user taps the contact action. Set by the
+    /// The contacts to text when the user taps the contact action. Set by the
     /// escalation code right before a notification is posted.
-    var primaryContact: EmergencyContact?
+    var contacts: [EmergencyContact] = []
     /// The most recent known coordinate, embedded into the SMS body if present.
     var lastCoordinate: CLLocationCoordinate2D?
 
@@ -775,9 +779,8 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             if let url = Escalation.utpdCallURL() {
                 UIApplication.shared.open(url)
             }
-        case "TEXT_CONTACT_ACTION":
-            if let contact = primaryContact,
-               let url = Escalation.smsURL(phone: contact.phone, coordinate: lastCoordinate) {
+        case "TEXT_CONTACTS_ACTION":
+            if let url = Escalation.groupSMSURL(phones: contacts.map(\.phone), coordinate: lastCoordinate) {
                 UIApplication.shared.open(url)
             }
         default:
