@@ -15,14 +15,17 @@ SafeWalk is an iOS app that keeps an eye on you when you're walking alone — la
 
 ## Features
 
-- **At-a-glance safety status** — A prominent, animated status hero communicates your state at a glance: **You're safe** (calm green), **Checking in…** (amber, while a prompt awaits your reply), or **Alert sent** (red) when escalation fires.
-- **One-tap quick actions** — **I'm safe** instantly resets the check-in clock and reassures the companion; **I need help** triggers escalation immediately, without waiting for the inactivity timer.
-- **AI check-in companion** — A friendly chatbot powered by Google Gemini messages you on a timer ("Just checking in! Reply if you're okay") and holds a natural, supportive conversation while you walk.
+- **At-a-glance safety status** — A prominent, animated status hero communicates your state at a glance: **You're safe** (calm green), **Checking in…** (amber, while a prompt awaits your reply), or **Alert sent** (red) when escalation fires. The pulse animation respects the system **Reduce Motion** setting.
+- **Walk timer / ETA** — Heading somewhere? Name your destination and how long the walk should take; SafeWalk counts down to your ETA and **auto-escalates if you don't tap "I've arrived" in time** — the same alert path as the inactivity watcher, anchored to a concrete deadline.
+- **One-tap quick actions** — **I'm safe** instantly resets the check-in clock and reassures the companion; **I need help** triggers escalation immediately, without waiting for the inactivity timer. Automatic escalation fires a distinct error haptic so an alert is *felt*, not just seen.
+- **AI check-in companion** — A friendly chatbot powered by Google Gemini messages you on a timer ("Just checking in! Reply if you're okay") and holds a natural, supportive conversation while you walk. Calls are **resilient**: a request timeout and one automatic retry on transient network/server failures, with typed errors so the app fails gracefully when offline.
+- **One-tap quick replies** — A row of canned replies ("I'm okay 👍", "Almost home", "Feeling nervous", "I need help 🚨") under the chat. Tapping one posts the message *and* a fixed companion response — so the chat stays conversational even with no network — and applies the right safety effect (confirm safety, or escalate). Deterministic by design, not an LLM round-trip.
 - **Live location map** — A MapKit view tracks your position in real time using Core Location, with a live countdown to the next check-in.
 - **Background tracking** — With "Always" location permission, SafeWalk keeps watching your position even when the screen is locked or the app is backgrounded (via the `location` background mode).
 - **Inactivity & no-movement detection** — If you don't reply or you stop moving for too long, the app assumes something may be wrong and escalates automatically.
-- **Emergency-contact escalation** — Add and manage trusted contacts (persisted locally with `UserDefaults`). When escalation fires and you have a contact saved, the alert offers a one-tap "Text <name>" action that opens a prefilled SMS — including a Maps link to your last known location — alongside the campus-police call.
+- **Multi-contact escalation** — Add and manage trusted contacts (persisted locally with `UserDefaults`). When escalation fires, the alert offers a one-tap "Text *n* contacts" action that opens a group SMS to **every** saved contact with a dialable number — prefilled with a help message and a Maps link to your last known location — alongside the campus-police call. One bad number can't suppress the texts to the others.
 - **One-tap emergency escalation** — A push notification with a "Call UT Police" action dials campus police (512-471-4441) directly from the lock screen.
+- **Accessibility** — VoiceOver labels throughout, Dynamic Type-friendly chat bubbles, Reduce Motion support, and haptics on escalation.
 
 ## How it works
 
@@ -30,9 +33,11 @@ SafeWalk is an iOS app that keeps an eye on you when you're walking alone — la
 | --- | --- |
 | Check-in timer | Prompts you every 60 seconds; resets whenever you respond. |
 | Inactivity threshold | No reply **or** no movement for 2 minutes triggers an alert. |
+| Walk timer | Optional, opt-in: a destination + expected duration. Running past your ETA without tapping "I've arrived" escalates immediately (regardless of movement). |
 | Movement detection | `CLLocationManager` flags movement when you travel more than 5 m. |
 | Background tracking | Requests "Always" authorization and enables `allowsBackgroundLocationUpdates` (with the `location` background mode) so tracking continues when backgrounded/locked. |
-| Escalation | Local notification with an actionable "Call UT Police" button (`tel://`), plus a "Text <contact>" button (`sms:` with a prefilled help message + location) when an emergency contact is saved. |
+| Escalation | Local notification with an actionable "Call UT Police" button (`tel://`), plus a "Text *n* contacts" button (group `sms:` with a prefilled help message + location) when emergency contacts are saved. |
+| Decision logic | The escalation decision, movement rule, countdown formatting, walk-overrun rule, and SMS/`tel:` deep-link construction are pure, side-effect-free functions (`SafetyEngine`, `WalkSession`/`WalkTimer`, `Escalation`) with unit-test coverage. |
 
 ## Tech stack
 
@@ -60,10 +65,15 @@ angles (the escalation alert, emergency-contacts panel), see [docs/SCREENSHOTS.m
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full component diagram, runtime flow, and a note on what is verified by CI vs. what needs on-device testing.
 
-- **`SafetyWatcherView`** — the main screen: live map, check-in countdown, chat feed, and emergency-contacts panel.
-- **`GeminiManager`** — a singleton that wraps the Gemini REST API with `Codable` request/response models.
+- **`SafetyWatcherView`** — the main screen: live map, check-in countdown, walk-timer card, chat feed, and emergency-contacts panel.
+- **`SafetyEngine`** — the pure decision core: escalation decision (no-response/no-movement vs. thresholds), the 5 m movement rule, and the `mm:ss` countdown formatter. No UI, no system calls — fully unit-tested.
+- **`WalkSession` / `WalkTimer`** — the pure walk-timer model and overrun rule (`.onTrack` / `.escalateOverdue`), with time injected so it's deterministic and tested.
+- **`Escalation`** — pure builders for the `sms:` / `tel:` deep links and the group-SMS recipient list, with phone-number normalization that fails safe on undialable input.
+- **`GeminiManager`** — a singleton that wraps the Gemini REST API with `Codable` models, a request timeout, one retry on transient failures, and typed errors.
 - **`LocationManager`** — an `ObservableObject` `CLLocationManagerDelegate` that publishes location updates, fires a movement callback, and escalates to "Always" authorization for background tracking.
-- **`NotificationDelegate`** — a shared singleton that handles the actionable notification, placing the emergency call (`tel:`) or texting the saved contact (`sms:`).
+- **`NotificationDelegate`** — a shared singleton that handles the actionable notification, placing the emergency call (`tel:`) or texting all saved contacts (group `sms:`).
+
+See [docs/SECURITY-REVIEW.md](docs/SECURITY-REVIEW.md) for a security & privacy review (PII handling, key management, and the known escalation fail-safe gaps).
 
 ## Getting started
 
