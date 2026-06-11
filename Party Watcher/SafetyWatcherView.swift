@@ -503,13 +503,20 @@ struct SafetyWatcherView: View {
     func startInactivityTimer() {
         inactivityTimer?.invalidate()
         inactivityTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
-            let timeSinceLastResponse = Date().timeIntervalSince(lastResponseDate)
-            let timeSinceLastMovement = Date().timeIntervalSince(lastMovementDate)
-            if timeSinceLastResponse > inactivityThreshold || timeSinceLastMovement > inactivityThreshold {
+            let decision = SafetyEngine.decide(
+                timeSinceLastResponse: Date().timeIntervalSince(lastResponseDate),
+                timeSinceLastMovement: Date().timeIntervalSince(lastMovementDate),
+                checkInInterval: checkInInterval,
+                inactivityThreshold: inactivityThreshold
+            )
+            switch decision {
+            case .escalate:
                 triggerAutoAlert()
                 sendPoliceNotification()
-            } else if timeSinceLastResponse > checkInInterval, status == .safe {
-                status = .checking
+            case .checking:
+                if status == .safe { status = .checking }
+            case .none:
+                break
             }
         }
     }
@@ -575,9 +582,9 @@ struct SafetyWatcherView: View {
         let content = UNMutableNotificationContent()
         content.title = "No response detected!"
         if let contact = primaryContact {
-            content.body = "Tap to call UT Austin Police (512-471-4441) or text \(contact.name) immediately."
+            content.body = "Tap to call UT Austin Police (\(Escalation.utpdDisplayNumber)) or text \(contact.name) immediately."
         } else {
-            content.body = "Tap to call UT Austin Police (512-471-4441) immediately."
+            content.body = "Tap to call UT Austin Police (\(Escalation.utpdDisplayNumber)) immediately."
         }
         content.sound = .default
         content.categoryIdentifier = primaryContact == nil ? "CALL_UTPD" : "ESCALATE"
@@ -604,10 +611,7 @@ struct SafetyWatcherView: View {
     // Timer string for next check-in. Reads `now` (advanced by the display
     // timer) so the countdown re-renders every second.
     var timerString: String {
-        let interval = max(0, Int(nextCheckIn.timeIntervalSince(now)))
-        let min = interval / 60
-        let sec = interval % 60
-        return String(format: "%02d:%02d", min, sec)
+        SafetyEngine.countdownString(secondsRemaining: nextCheckIn.timeIntervalSince(now))
     }
 }
 
@@ -630,35 +634,18 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         switch response.actionIdentifier {
         case "CALL_UTPD_ACTION":
-            if let url = URL(string: "tel://5124714441") {
+            if let url = Escalation.utpdCallURL() {
                 UIApplication.shared.open(url)
             }
         case "TEXT_CONTACT_ACTION":
-            if let url = smsURL(for: primaryContact) {
+            if let contact = primaryContact,
+               let url = Escalation.smsURL(phone: contact.phone, coordinate: lastCoordinate) {
                 UIApplication.shared.open(url)
             }
         default:
             break
         }
         completionHandler()
-    }
-
-    /// Builds an `sms:` deep link to the contact's number with a prefilled body
-    /// that includes a help message and, when available, a Maps link to the
-    /// user's last known location.
-    private func smsURL(for contact: EmergencyContact?) -> URL? {
-        guard let contact = contact else { return nil }
-        let digits = contact.phone.filter { $0.isNumber || $0 == "+" }
-        guard !digits.isEmpty else { return nil }
-        var body = "I may need help. This is SafeWalk reaching out on my behalf — please check on me."
-        if let coord = lastCoordinate {
-            body += " My last location: https://maps.apple.com/?ll=\(coord.latitude),\(coord.longitude)"
-        }
-        var components = URLComponents()
-        components.scheme = "sms"
-        components.path = digits
-        components.queryItems = [URLQueryItem(name: "body", value: body)]
-        return components.url
     }
 }
 
@@ -773,7 +760,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         let newLocation = locations.last
         if let last = lastLocation, let newLoc = newLocation {
             let distance = last.distance(from: newLoc)
-            if distance > 5 {
+            if SafetyEngine.isSignificantMovement(distance: distance) {
                 onMovement?()
             }
         }
