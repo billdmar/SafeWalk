@@ -25,15 +25,16 @@ Starting a walk: name a destination and pick how long it should take (5–30 min
 escalates — alerting your contact and offering a call to UT Police — if you haven't tapped
 "I've arrived" by then.
 
-## Deterministic quick replies
+## AI quick replies
 
 | "I'm okay" confirms safety | "I need help" escalates |
 | :--: | :--: |
 | ![Quick reply confirming safety](screenshots/quick-replies-safe.png) | ![Quick reply triggering escalation](screenshots/quick-replies-help.png) |
 
-The chat offers tappable canned replies. Each posts your message **and** a fixed companion
-response with no network call — "I'm okay 👍" confirms safety and resets the check-in clock,
-while "I need help 🚨" posts a distress message and escalates immediately.
+The chat offers tappable suggested replies. Tapping one sends it to the Gemini AI companion for a
+real, context-aware response (with an instant built-in fallback when offline) — "I'm okay 👍"
+confirms safety and resets the check-in clock. "I need help 🚨" is the exception: it posts a
+distress message and escalates **instantly**, without waiting on the AI.
 
 ## How to capture
 

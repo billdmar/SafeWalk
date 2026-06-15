@@ -27,8 +27,8 @@ Party_WatcherApp (@main)
         │    • WalkSession/WalkTimer — ETA + overrun rule (tested)  │
         │    • Escalation    — sms:/tel: + group-SMS builders,      │
         │                      phone normalization (tested)         │
-        │    • QuickReplies  — deterministic canned chat replies    │
-        │                      + label→effect mapping (tested)      │
+        │    • QuickReplies  — AI quick-reply catalog + effects;    │
+        │                      Gemini reply, instant fallback       │
         │  owns / drives                                            │
         ├── LocationManager (StateObject, CLLocationManagerDelegate)
         │        • requestWhenInUse → escalates to requestAlways
