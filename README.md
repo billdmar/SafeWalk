@@ -52,14 +52,21 @@ SafeWalk is an iOS app that keeps an eye on you when you're walking alone — la
 
 ## Screenshots
 
-| Light mode | Dark mode |
-| :--: | :--: |
-| ![SafeWalk in light mode](docs/screenshot-light.png) | ![SafeWalk in dark mode](docs/screenshot-dark.png) |
+![SafeWalk dashboard — live location map, active walk timer, quick actions, and check-in chat](docs/screenshots/hero-dashboard.png)
 
-A card-based dashboard: the animated safety-status hero, a live location map with a
-live check-in countdown, one-tap **I'm safe** / **I need help** quick actions, and the
-Gemini-powered check-in chat. Captured in the iOS Simulator (iPhone 17 Pro). For more
-angles (the escalation alert, emergency-contacts panel), see [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
+*The SafeWalk dashboard: live location map with a check-in countdown, an active walk timer
+counting down to your ETA, one-tap **I'm safe** / **I need help** actions, and the check-in chat —
+in SafeWalk's burnt-orange-and-white theme. Captured in the iOS Simulator (iPhone 17 Pro).*
+
+| Walk timer setup | Quick replies — "I'm okay" | Quick replies — "I need help" |
+| :--: | :--: | :--: |
+| ![Start a walk: set a destination and how long it should take](docs/screenshots/walk-timer-start.png) | ![Tapping a quick reply confirms you're safe and the companion responds](docs/screenshots/quick-replies-safe.png) | ![Tapping "I need help" posts a distress message and escalates immediately](docs/screenshots/quick-replies-help.png) |
+| Name a destination and pick how long the walk should take — SafeWalk escalates if you don't arrive in time. | Deterministic one-tap replies: "I'm okay" confirms safety and the companion answers instantly. | "I need help 🚨" posts a distress message and triggers escalation right away. |
+
+<p align="center">
+  <img src="docs/screenshots/dashboard-alert.png" width="320" alt="Alert-sent state: the status hero turns red after escalation, with the idle walk timer below"><br>
+  <em>The <strong>Alert sent</strong> state after escalation — the status hero turns red, with the idle walk timer ready to start a new walk.</em>
+</p>
 
 ## Architecture
 
