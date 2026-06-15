@@ -606,14 +606,25 @@ struct SafetyWatcherView: View {
         }
     }
 
-    /// Handles a tap on a deterministic quick-reply button: posts the canned
-    /// user message and the fixed companion response (no network call), then
-    /// applies the reply's safety effect — confirm safety, do nothing, or
-    /// escalate. Feels like the AI is responding, but it's fully deterministic.
+    /// Handles a tap on a quick-reply button. The tapped text is posted as the
+    /// user's message and then sent to the Gemini companion for a genuine,
+    /// context-aware AI reply — the canned `botResponse` is used only as an
+    /// instant offline fallback when the network/AI is unavailable. The reply's
+    /// safety effect (confirm safety / neutral) is applied immediately so the
+    /// safety state never waits on the network.
+    ///
+    /// The one exception is `.escalate` ("I need help"): escalation must be
+    /// instant and must not depend on a round-trip, so it posts the fixed line
+    /// and triggers help right away without calling the AI.
     func tapQuickReply(_ reply: QuickReply) {
         messages.append(ChatMessage(text: reply.label, isUser: true))
-        messages.append(ChatMessage(text: "🤖 " + reply.botResponse, isUser: false))
+
         switch reply.effect {
+        case .escalate:
+            // Safety-critical: respond and escalate instantly, no network call.
+            messages.append(ChatMessage(text: "🤖 " + reply.botResponse, isUser: false))
+            triggerHelpNow()
+            return
         case .reassure:
             haptic(.light)
             markActivity()
@@ -621,8 +632,19 @@ struct SafetyWatcherView: View {
         case .neutral:
             haptic(.light)
             markActivity()
-        case .escalate:
-            triggerHelpNow()
+        }
+
+        // Conversational reply: ask the AI companion for a real response, with
+        // the canned line as the offline fallback.
+        conversation.append(.init(role: "user", parts: [.init(text: reply.label)]))
+        isLoadingResponse = true
+        GeminiManager.shared.sendMessage(messages: conversation) { response in
+            DispatchQueue.main.async {
+                let aiReply = response ?? reply.botResponse
+                messages.append(ChatMessage(text: "🤖 " + aiReply, isUser: false))
+                conversation.append(.init(role: "model", parts: [.init(text: aiReply)]))
+                isLoadingResponse = false
+            }
         }
     }
 

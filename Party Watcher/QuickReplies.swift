@@ -2,25 +2,29 @@
 //  QuickReplies.swift
 //  Party Watcher
 //
-//  Deterministic "quick reply" buttons for the check-in chat. Tapping one posts
-//  a canned user message and a fixed companion response — so the chat feels
-//  conversational without depending on the network or the Gemini API. Each reply
-//  also carries a safety effect so a tap can do the right thing (confirm safety,
-//  or escalate) in addition to talking.
+//  "Quick reply" buttons for the check-in chat. Tapping one posts the reply as
+//  the user's message and sends it to the Gemini AI companion for a real,
+//  context-aware response — `botResponse` is the instant offline fallback used
+//  only when the network/AI is unavailable. Each reply also carries a safety
+//  effect so a tap does the right thing (confirm safety, or escalate) in
+//  addition to talking. The "I need help" reply escalates instantly and does
+//  NOT wait on the AI, since a safety action must never depend on the network.
 //
-//  Like `SafetyEngine` / `Escalation`, the catalog and the label→response
-//  mapping are pure and side-effect free, so the wording and the effect of every
-//  button are unit-tested. The view is responsible only for *applying* the
-//  effect (markSafe / escalate) and appending the messages.
+//  Like `SafetyEngine` / `Escalation`, the catalog and the label→reply mapping
+//  are pure and side-effect free, so the labels, fallback wording, and the
+//  effect of every button are unit-tested. The view is responsible for sending
+//  the AI request, applying the effect (markSafe / escalate), and appending the
+//  messages.
 //
 
 import Foundation
 
-/// A tappable canned reply in the check-in chat.
+/// A tappable quick reply in the check-in chat.
 struct QuickReply: Identifiable, Hashable {
-    /// What the button shows and what gets posted as the user's chat bubble.
+    /// What the button shows and what gets posted as the user's chat bubble
+    /// (and sent to the AI companion as the prompt).
     let label: String
-    /// The companion's deterministic reply to this tap.
+    /// The offline fallback response, used only when the AI request fails.
     let botResponse: String
     /// The safety action the tap performs, in addition to the exchange.
     let effect: Effect
@@ -40,7 +44,7 @@ struct QuickReply: Identifiable, Hashable {
     }
 }
 
-/// The fixed catalog of quick replies and the deterministic responder.
+/// The catalog of quick replies and the label→reply lookup.
 enum QuickReplies {
     /// The buttons offered under the chat input, in display order. Kept small so
     /// they fit the row and cover the common cases: "I'm fine", small talk, and

@@ -2,10 +2,10 @@
 //  QuickRepliesTests.swift
 //  Party WatcherTests
 //
-//  Regression guards for the deterministic chat quick replies: the catalog is
-//  well-formed (unique labels, exactly one escalating option) and the
-//  label→response mapping is stable. These are what make the chat feel like an
-//  AI while staying fully deterministic and network-free.
+//  Regression guards for the chat quick-reply catalog: it's well-formed (unique
+//  labels, exactly one escalating option) and the label→reply lookup is stable.
+//  Taps are answered by the Gemini AI companion at runtime; the `botResponse`
+//  here is the offline fallback, which these tests verify is always present.
 //
 
 import Testing
@@ -45,8 +45,8 @@ struct QuickRepliesTests {
         #expect(QuickReplies.response(for: "this is not a quick reply") == nil)
     }
 
-    /// The reassuring options confirm safety; the lookup is deterministic — the
-    /// same label always yields the same effect.
+    /// Each label maps to a stable safety effect — the AI generates the wording,
+    /// but the safety action a tap performs is fixed and predictable.
     @Test func effectsAreStablePerLabel() {
         #expect(QuickReplies.response(for: "I'm okay 👍")?.effect == .reassure)
         #expect(QuickReplies.response(for: "Just walking")?.effect == .neutral)

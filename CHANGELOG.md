@@ -20,10 +20,12 @@ Each item below corresponds to a reviewed pull request.
 - **Resilient Gemini calls** — a request timeout, one automatic retry on
   transient network/server failures (5xx / 429 / network blips), an empty-key
   fast-fail, and a typed `GeminiError` so the UI can fail gracefully offline.
-- **Deterministic chat quick replies** — a row of tappable canned replies under
-  the chat. Each posts a fixed user message + companion response (no network
-  call) and carries a safety effect (`reassure` / `neutral` / `escalate`). Pure
-  `QuickReplies` catalog with regression tests; feels AI-like, fully deterministic.
+- **AI chat quick replies** — a row of tappable suggested replies under the
+  chat. Tapping one sends it to the Gemini AI companion for a real, context-aware
+  response (with an instant built-in fallback when offline) and carries a safety
+  effect (`reassure` / `neutral` / `escalate`). The `escalate` reply ("I need
+  help") triggers escalation instantly without an AI round-trip. Pure
+  `QuickReplies` catalog with regression tests over labels and effects.
 - **Accessibility** — Reduce Motion support for the status hero, a distinct
   error haptic on automatic escalation, and Dynamic Type-friendly chat bubbles.
 - **`docs/SECURITY-REVIEW.md`** — a security & privacy review (PII handling, key
