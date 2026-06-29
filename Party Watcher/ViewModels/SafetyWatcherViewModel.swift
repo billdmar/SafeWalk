@@ -44,6 +44,9 @@ final class SafetyWatcherViewModel: ObservableObject {
 
     let checkInInterval: TimeInterval = 60   // 1 minute
     let inactivityThreshold: TimeInterval = 120 // 2 minutes
+    /// How many recent conversation turns (besides the leading system prompt) to
+    /// send to Gemini. Bounds an ever-growing history on a long walk.
+    let historyTurnLimit = 20
 
     // MARK: - Dependencies
 
@@ -136,6 +139,7 @@ final class SafetyWatcherViewModel: ObservableObject {
         let userMsg = userInput
         messages.append(ChatMessage(text: userMsg, isUser: true))
         conversation.append(.init(role: "user", parts: [.init(text: userMsg)]))
+        pruneConversation()
         userInput = ""
         markActivity()
         haptic(.light)
@@ -147,6 +151,7 @@ final class SafetyWatcherViewModel: ObservableObject {
                 case .success(let reply):
                     self.messages.append(ChatMessage(text: "🤖 " + reply, isUser: false))
                     self.conversation.append(.init(role: "model", parts: [.init(text: reply)]))
+                    self.pruneConversation()
                 case .failure:
                     self.messages.append(ChatMessage(text: "🤖 Sorry, I couldn't get a response right now.", isUser: false))
                 }
@@ -179,6 +184,7 @@ final class SafetyWatcherViewModel: ObservableObject {
         }
 
         conversation.append(.init(role: "user", parts: [.init(text: reply.label)]))
+        pruneConversation()
         isLoadingResponse = true
         gemini.send(messages: conversation) { [weak self] result in
             DispatchQueue.main.async {
@@ -190,6 +196,7 @@ final class SafetyWatcherViewModel: ObservableObject {
                 }
                 self.messages.append(ChatMessage(text: "🤖 " + aiReply, isUser: false))
                 self.conversation.append(.init(role: "model", parts: [.init(text: aiReply)]))
+                self.pruneConversation()
                 self.isLoadingResponse = false
             }
         }
@@ -344,47 +351,31 @@ final class SafetyWatcherViewModel: ObservableObject {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
 
-    /// Builds the escalation notification. When the user has saved emergency
-    /// contacts, the alert offers a single "Text <n> contacts" action that opens
-    /// a group SMS to *every* contact with a dialable number (prefilled with a
-    /// help message + last known location). The "Call UT Police" action is
-    /// always present, so escalation reaches the contacts *and* UTPD when
-    /// contacts exist, and falls back to UTPD only when none is saved.
+    /// Posts the escalation notification via ``NotificationService``, which
+    /// embeds the contacts + coordinate as a per-notification snapshot (no shared
+    /// mutable state) and reports a delivery failure so we can fall back rather
+    /// than fail silently. The actionable categories are registered at launch.
     private func sendPoliceNotification() {
-        NotificationDelegate.shared.contacts = contacts
-        NotificationDelegate.shared.lastCoordinate = lastLocation?.coordinate
-
-        let textableCount = Escalation.dialableCount(in: contacts.map(\.phone))
-
-        let content = UNMutableNotificationContent()
-        content.title = "No response detected!"
-        if textableCount > 0 {
-            let noun = textableCount == 1 ? "contact" : "contacts"
-            content.body = "Tap to call UT Austin Police (\(Escalation.utpdDisplayNumber)) or text your \(textableCount) emergency \(noun) immediately."
-        } else {
-            content.body = "Tap to call UT Austin Police (\(Escalation.utpdDisplayNumber)) immediately."
+        NotificationService.postEscalation(
+            contacts: contacts,
+            coordinate: lastLocation?.coordinate
+        ) { [weak self] in
+            // The system rejected the notification (e.g. notifications denied).
+            // Don't let escalation die quietly — surface the in-app alert and a
+            // chat line pointing the user to the on-screen "I need help" button.
+            guard let self else { return }
+            self.showAutoAlert = true
+            self.messages.append(ChatMessage(
+                text: "🤖 I couldn't post a notification — use the “I need help” button to call UT Police or text your contacts.",
+                isUser: false))
         }
-        content.sound = .default
-        content.categoryIdentifier = textableCount > 0 ? "ESCALATE" : "CALL_UTPD"
+    }
 
-        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
-
-        let callAction = UNNotificationAction(identifier: "CALL_UTPD_ACTION", title: "Call UT Police", options: .foreground)
-        var actions = [callAction]
-        if textableCount > 0 {
-            let noun = textableCount == 1 ? "contact" : "contacts"
-            let textContactsAction = UNNotificationAction(
-                identifier: "TEXT_CONTACTS_ACTION",
-                title: "Text \(textableCount) \(noun)",
-                options: .foreground
-            )
-            actions.insert(textContactsAction, at: 0)
-        }
-        let utpdCategory = UNNotificationCategory(identifier: "CALL_UTPD", actions: [callAction], intentIdentifiers: [], options: [])
-        let escalateCategory = UNNotificationCategory(identifier: "ESCALATE", actions: actions, intentIdentifiers: [], options: [])
-        UNUserNotificationCenter.current().setNotificationCategories([utpdCategory, escalateCategory])
-        UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
+    /// Bounds the stored conversation so a long walk doesn't grow it without
+    /// limit (and re-send the whole history on every request). Delegates to the
+    /// pure ``GeminiManager/prune(_:keepingLast:)`` helper.
+    private func pruneConversation() {
+        conversation = GeminiManager.prune(conversation, keepingLast: historyTurnLimit)
     }
 
     // MARK: - Haptics
