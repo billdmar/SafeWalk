@@ -13,10 +13,11 @@ import CoreLocation
 ///
 /// Note: background GPS delivery, the "Always" prompt, and lock-screen wakeups
 /// are verified on a device/simulator, not in CI.
-class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate, LocationProviding {
     private let manager = CLLocationManager()
     @Published var lastLocation: CLLocation?
     var onMovement: (() -> Void)?
+    var onLocationChange: ((CLLocation?) -> Void)?
     override init() {
         super.init()
         manager.delegate = self
@@ -81,5 +82,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             }
         }
         lastLocation = newLocation
+        onLocationChange?(newLocation)
     }
 }
