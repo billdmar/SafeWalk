@@ -4,6 +4,7 @@ import SwiftUI
 /// deterministic quick-reply row, and the message input bar.
 struct ChatCardView: View {
     @ObservedObject var vm: SafetyWatcherViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Drives keyboard focus so it can be dismissed after a message is sent.
     @FocusState private var inputFocused: Bool
 
@@ -26,19 +27,17 @@ struct ChatCardView: View {
                     ForEach(vm.messages) { msg in
                         ChatBubble(message: msg.text, isUser: msg.isUser)
                             .id(msg.id)
+                            .transition(reduceMotion
+                                        ? .opacity
+                                        : .opacity.combined(with: .move(edge: .bottom)))
                     }
                     if vm.isLoadingResponse {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                            Text("Companion is typing…")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 4)
-                        .id("typing")
+                        TypingIndicatorView()
+                            .id("typing")
                     }
                 }
                 .padding(.vertical, 4)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: vm.messages.count)
                 .onChange(of: vm.messages.count) {
                     if let last = vm.messages.last {
                         withAnimation { scrollProxy.scrollTo(last.id, anchor: .bottom) }
@@ -46,6 +45,7 @@ struct ChatCardView: View {
                 }
             }
             .frame(height: 240)
+            .accessibilityIdentifier("chatTranscript")
         }
     }
 
@@ -68,6 +68,7 @@ struct ChatCardView: View {
                             )
                             .foregroundColor(reply.effect == .escalate ? Theme.alert : Theme.burntOrange)
                     }
+                    .buttonStyle(.pressable)
                     .accessibilityHint(reply.effect == .escalate
                                        ? "Sends a distress message and escalates immediately."
                                        : "Sends a quick reply to the companion.")
@@ -87,13 +88,16 @@ struct ChatCardView: View {
                 .submitLabel(.send)
                 .focused($inputFocused)
                 .onSubmit(send)
+                .accessibilityIdentifier("chatInput")
             Button(action: send) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 32))
                     .foregroundColor(vm.inputIsEmpty ? Color.gray.opacity(0.4) : Theme.burntOrange)
             }
             .disabled(vm.inputIsEmpty)
+            .buttonStyle(.pressable)
             .accessibilityLabel("Send reply")
+            .accessibilityIdentifier("sendButton")
         }
     }
 

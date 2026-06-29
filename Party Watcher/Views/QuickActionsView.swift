@@ -14,6 +14,7 @@ struct QuickActionsView: View {
             .buttonStyle(.borderedProminent)
             .tint(Theme.safe)
             .accessibilityHint("Resets the check-in timer and lets the companion know you're okay.")
+            .accessibilityIdentifier("imSafeButton")
 
             Button(action: vm.triggerHelpNow) {
                 Label("I need help", systemImage: "sos")
@@ -23,6 +24,7 @@ struct QuickActionsView: View {
             .buttonStyle(.borderedProminent)
             .tint(Theme.alert)
             .accessibilityHint("Immediately sends the emergency alert and notification.")
+            .accessibilityIdentifier("needHelpButton")
         }
     }
 }

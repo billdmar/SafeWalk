@@ -17,6 +17,7 @@ struct ContactsCardView: View {
                         .foregroundColor(Theme.burntOrange)
                 }
                 .accessibilityLabel("Add emergency contact")
+                .accessibilityIdentifier("addContactButton")
             }
             if vm.contacts.isEmpty {
                 Text("Add a trusted contact so SafeWalk can offer a one-tap text to them if you stop responding.")
