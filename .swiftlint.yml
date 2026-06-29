@@ -1,5 +1,10 @@
 # SwiftLint configuration for SafeWalk.
-# Run locally with `swiftlint` (or `swiftlint --strict` to match CI).
+#
+# CI runs `swiftlint lint` non-strict: real `error`-severity violations fail the
+# job, warnings are surfaced as guidance. Warnings that remain are deliberate —
+# long user-facing string literals (chat copy, settings footers) and standard
+# test idioms (`URL(string:)!` in a URLProtocol stub, `class`-scoped XCTest
+# members) that read better as-is than mangled to satisfy the linter.
 
 included:
   - "Party Watcher"

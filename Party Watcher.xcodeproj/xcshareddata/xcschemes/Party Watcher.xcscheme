@@ -38,6 +38,16 @@
                ReferencedContainer = "container:Party Watcher.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "0848DD6C2E31869800847F00"
+               BuildableName = "Party WatcherUITests.xctest"
+               BlueprintName = "Party WatcherUITests"
+               ReferencedContainer = "container:Party Watcher.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction
