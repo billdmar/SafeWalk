@@ -47,17 +47,15 @@ identifier_name:
     warning: 1
     error: 1
 
-# SafetyWatcherView is an oversized "god view" that the in-progress MVVM
-# refactor (PR3/PR4) decomposes into a ViewModel + small subviews. These
-# thresholds are intentionally generous now so the lint job is green during the
-# transition; they will be tightened back toward the defaults in PR4 once the
-# god view is gone.
+# The MVVM refactor decomposed the former 1008-line god view into a view model
+# plus small subviews; the largest file is now the ~400-line view model. These
+# thresholds sit just above that so growth is flagged early.
 file_length:
-  warning: 850
-  error: 1200
+  warning: 500
+  error: 700
 type_body_length:
-  warning: 700
-  error: 900
+  warning: 450
+  error: 600
 
 nesting:
   # The Gemini response model nests Codable structs (Response > Candidate >
