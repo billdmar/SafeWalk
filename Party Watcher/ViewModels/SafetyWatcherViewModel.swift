@@ -462,13 +462,17 @@ final class SafetyWatcherViewModel: ObservableObject {
 
     // MARK: - Haptics
 
+    /// Routine tap feedback, delegated to the centralized ``Haptics`` helper.
     private func haptic(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
-        UIImpactFeedbackGenerator(style: style).impactOccurred()
+        switch style {
+        case .medium, .heavy: Haptics.medium()
+        default: Haptics.light()
+        }
     }
 
     /// A distinct error/escalation haptic so an automatic alert is *felt*, not
     /// only seen — important when the phone is in a pocket during a walk.
     private func escalationHaptic() {
-        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        Haptics.escalation()
     }
 }

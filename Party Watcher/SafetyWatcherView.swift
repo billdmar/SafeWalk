@@ -57,6 +57,7 @@ struct SafetyWatcherView: View {
                     .foregroundColor(Theme.burntOrange)
             }
             .accessibilityLabel("Settings")
+            .accessibilityIdentifier("settingsButton")
         }
         .padding(.horizontal)
         .padding(.top, 16)

@@ -4,6 +4,7 @@ import SwiftUI
 struct ChatBubble: View {
     let message: String
     let isUser: Bool
+
     var body: some View {
         HStack {
             if isUser { Spacer(minLength: 40) }
@@ -14,10 +15,11 @@ struct ChatBubble: View {
                 .foregroundColor(isUser ? .white : .primary)
                 .cornerRadius(16)
                 .shadow(color: .black.opacity(0.04), radius: 2, x: 0, y: 1)
-                // Cap the bubble at ~75% of the row so long replies wrap instead
-                // of clipping — but let it grow with Dynamic Type rather than a
-                // fixed 260 pt that truncated at large accessibility sizes.
-                .frame(maxWidth: 300, alignment: isUser ? .trailing : .leading)
+                // Cap at ~78% of the screen width so a short message hugs its
+                // text while a long one wraps instead of clipping — relative to
+                // the screen (and so it grows with Dynamic Type) rather than the
+                // old fixed 300 pt that truncated at large accessibility sizes.
+                .frame(maxWidth: UIScreen.main.bounds.width * 0.78, alignment: isUser ? .trailing : .leading)
             if !isUser { Spacer(minLength: 40) }
         }
         .padding(.vertical, 1)
