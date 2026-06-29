@@ -23,8 +23,8 @@ jobs:
         run: brew install swiftlint
 
       # Non-strict: real `error`-severity violations fail the job, while
-      # warnings are surfaced as guidance. (The in-progress MVVM refactor
-      # tightens this to `--strict` once the legacy god view is decomposed.)
+      # warnings (long user-facing strings, standard test idioms) are surfaced
+      # as guidance rather than gating the merge.
       - name: Lint
         run: swiftlint lint --reporter github-actions-logging
 
@@ -82,3 +82,37 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           xcrun xccov view --report "$XCRESULT" | head -40 | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  ui-tests:
+    name: UI Tests (iOS Simulator)
+    runs-on: macos-15
+    # End-to-end XCUITests are slower and launch the full app, so they run in
+    # their own job and don't gate the fast unit signal. continue-on-error keeps
+    # a flaky simulator interaction from blocking a merge.
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Write stub Secrets.swift
+        run: |
+          cat > "Party Watcher/Secrets.swift" <<'SWIFT'
+          import Foundation
+          // CI placeholder — real key is provided locally and gitignored.
+          enum Secrets {
+              static let geminiAPIKey = ""
+          }
+          SWIFT
+
+      - name: UI tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project "Party Watcher.xcodeproj" \
+            -scheme "Party Watcher" \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,OS=latest,name=iPhone 16 Pro' \
+            -derivedDataPath .build/DerivedData \
+            -only-testing:"Party WatcherUITests" \
+            CODE_SIGNING_ALLOWED=NO

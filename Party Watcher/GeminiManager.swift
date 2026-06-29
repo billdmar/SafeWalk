@@ -14,7 +14,7 @@ class GeminiManager {
     /// Shared instance used throughout the app.
     static let shared = GeminiManager()
     // Loaded from Secrets.swift, which is gitignored. See Secrets.example.swift.
-    private let apiKey = Secrets.geminiAPIKey
+    private let apiKey: String
     private let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
     /// Per-request timeout. A hung connection fails fast rather than relying
@@ -22,15 +22,28 @@ class GeminiManager {
     /// awaiting a safety check-in reply.
     private let requestTimeout: TimeInterval = 15
     /// Delay before the single automatic retry on a transient failure.
-    private let retryDelay: TimeInterval = 1
+    private let retryDelay: TimeInterval
 
-    /// Session configured with an explicit request timeout. Built once and
-    /// reused, mirroring the previous use of a shared session.
-    private let session: URLSession = {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 15
-        return URLSession(configuration: config)
-    }()
+    /// Session configured with an explicit request timeout.
+    private let session: URLSession
+
+    /// Designated initializer. The defaults reproduce the production setup;
+    /// tests inject a stub `URLSession` (via a `URLProtocol`), a known API key,
+    /// and a near-zero retry delay so the real request/retry pipeline can be
+    /// exercised without the network or slow waits.
+    init(apiKey: String = Secrets.geminiAPIKey,
+         session: URLSession? = nil,
+         retryDelay: TimeInterval = 1) {
+        self.apiKey = apiKey
+        self.retryDelay = retryDelay
+        if let session {
+            self.session = session
+        } else {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = 15
+            self.session = URLSession(configuration: config)
+        }
+    }
 
     struct GeminiPart: Codable {
         let text: String

@@ -77,15 +77,19 @@ in SafeWalk's burnt-orange-and-white theme. Captured in the iOS Simulator (iPhon
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full component diagram, runtime flow, and a note on what is verified by CI vs. what needs on-device testing.
 
-- **`SafetyWatcherView`** — the main screen: live map, check-in countdown, walk-timer card, chat feed, and emergency-contacts panel.
+SafeWalk follows **MVVM with dependency injection**. The views are presentation only; the controller and the pure safety logic carry the behavior and the tests.
+
+- **`SafetyWatcherView`** + card subviews (`StatusHeroView`, `MapCardView`, `WalkCardView`, `QuickActionsView`, `ChatCardView`, `ContactsCardView`, sheets) — presentation only, ~60-line composition reading the view model.
+- **`SafetyWatcherViewModel`** (`@MainActor`) — owns the chat, the live-location mirror, the three timers, persistence, settings, and escalation. Every dependency is injected behind a protocol (`LocationProviding`, `GeminiSending`, `ContactStoring`, `SettingsStoring`, `ChatHistoryStoring`, `BatteryMonitoring`, `TimerScheduling`, a `now` clock), so the controller is unit-tested deterministically — no device, network, or wall-clock waits.
 - **`SafetyEngine`** — the pure decision core: escalation decision (no-response/no-movement vs. thresholds), the 5 m movement rule, and the `mm:ss` countdown formatter. No UI, no system calls — fully unit-tested.
 - **`WalkSession` / `WalkTimer`** — the pure walk-timer model and overrun rule (`.onTrack` / `.escalateOverdue`), with time injected so it's deterministic and tested.
-- **`Escalation`** — pure builders for the `sms:` / `tel:` deep links and the group-SMS recipient list, with phone-number normalization that fails safe on undialable input.
-- **`GeminiManager`** — a singleton that wraps the Gemini REST API with `Codable` models, a request timeout, one retry on transient failures, and typed errors.
-- **`LocationManager`** — an `ObservableObject` `CLLocationManagerDelegate` that publishes location updates, fires a movement callback, and escalates to "Always" authorization for background tracking.
-- **`NotificationDelegate`** — a shared singleton that handles the actionable notification, placing the emergency call (`tel:`) or texting all saved contacts (group `sms:`).
+- **`Escalation`** — pure builders for the `sms:` / `tel:` deep links and the group-SMS recipient list, with phone-number normalization that fails safe on undialable input (incl. the optional campus-number override).
+- **`GeminiManager`** — wraps the Gemini REST API with `Codable` models, a request timeout, one retry on transient failures, typed errors, and history pruning. An injectable `URLSession` lets the full request/retry pipeline be tested via a `URLProtocol` stub.
+- **`NotificationService` / `NotificationDelegate`** — register actionable categories at launch and post escalation notifications that carry their payload in `userInfo` (no shared mutable state), placing the emergency call (`tel:`) or texting all saved contacts (group `sms:`).
 
-See [docs/SECURITY-REVIEW.md](docs/SECURITY-REVIEW.md) for a security & privacy review (PII handling, key management, and the known escalation fail-safe gaps).
+**Testing:** 74 unit tests (Swift Testing) covering the view model, pure logic, and the Gemini request pipeline, plus end-to-end XCUITest flows — all network-free and deterministic. CI runs SwiftLint, the unit suite with code coverage, and the UI flows.
+
+See [docs/SECURITY-REVIEW.md](docs/SECURITY-REVIEW.md) for a security & privacy review (PII handling, key management, and the escalation fail-safes — the three High-severity gaps are now addressed).
 
 ## Getting started
 
