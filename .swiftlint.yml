@@ -1,0 +1,65 @@
+# SwiftLint configuration for SafeWalk.
+# Run locally with `swiftlint` (or `swiftlint --strict` to match CI).
+
+included:
+  - "Party Watcher"
+  - "Party WatcherTests"
+  - "Party WatcherUITests"
+
+excluded:
+  - .build
+  - "**/Secrets.swift"
+  - "**/Secrets.example.swift"
+
+# High-value opt-in rules beyond the defaults.
+opt_in_rules:
+  - empty_count
+  - closure_spacing
+  - force_unwrapping
+  - explicit_init
+  - first_where
+  - last_where
+  - sorted_first_last
+  - unneeded_parentheses_in_closure_argument
+
+disabled_rules:
+  # Xcode generates the @main type as `Party_WatcherApp`; the underscore is
+  # imposed by the project name and is not something we control.
+  - type_name
+  # Idiomatic SwiftUI constantly passes a content closure plus modifiers like
+  # `onChange`/`onAppear` as trailing closures (e.g. `Map { … }.onChange { … }`).
+  # This rule fights that convention with no real readability gain.
+  - multiple_closures_with_trailing_closure
+  # `= nil` on optional stored properties reads more explicitly for the timer
+  # ivars; harmless and a matter of taste.
+  - implicit_optional_initialization
+
+line_length:
+  warning: 140
+  error: 250
+  ignores_comments: true
+  ignores_urls: true
+
+identifier_name:
+  # Allow short, conventional locals (e.g. `d` for a decision, `s` for a
+  # session) that read clearly in focused test bodies.
+  min_length:
+    warning: 1
+    error: 1
+
+# SafetyWatcherView is an oversized "god view" that the in-progress MVVM
+# refactor (PR3/PR4) decomposes into a ViewModel + small subviews. These
+# thresholds are intentionally generous now so the lint job is green during the
+# transition; they will be tightened back toward the defaults in PR4 once the
+# god view is gone.
+file_length:
+  warning: 850
+  error: 1200
+type_body_length:
+  warning: 700
+  error: 900
+
+nesting:
+  # The Gemini response model nests Codable structs (Response > Candidate >
+  # Content) to mirror the JSON shape — a common and readable pattern.
+  type_level: 3
