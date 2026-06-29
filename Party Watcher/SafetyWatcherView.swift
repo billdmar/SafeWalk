@@ -18,6 +18,7 @@ struct SafetyWatcherView: View {
                 appBar
                 ScrollView {
                     VStack(spacing: 14) {
+                        if vm.lowBatteryWarning { lowBatteryBanner }
                         StatusHeroView(status: vm.status)
                         MapCardView(vm: vm)
                         WalkCardView(vm: vm)
@@ -35,6 +36,7 @@ struct SafetyWatcherView: View {
         .onDisappear { vm.onDisappear() }
         .fullScreenCover(isPresented: $vm.showAddContact) { AddContactSheet(vm: vm) }
         .sheet(isPresented: $vm.showStartWalk) { StartWalkSheet(vm: vm) }
+        .sheet(isPresented: $vm.showSettings) { SettingsView(vm: vm) }
         .alert("No response detected! Sending emergency alert.", isPresented: $vm.showAutoAlert) {
             Button("OK", role: .cancel) {}
         }
@@ -49,11 +51,30 @@ struct SafetyWatcherView: View {
                 .font(.title2).fontWeight(.heavy)
                 .foregroundColor(Theme.burntOrange)
             Spacer()
+            Button(action: { vm.showSettings = true }) {
+                Image(systemName: "gearshape.fill")
+                    .font(.title3)
+                    .foregroundColor(Theme.burntOrange)
+            }
+            .accessibilityLabel("Settings")
         }
         .padding(.horizontal)
         .padding(.top, 16)
         .padding(.bottom, 10)
+    }
+
+    /// Surfaced when background tracking is on and the battery is critically low.
+    private var lowBatteryBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "battery.25")
+                .foregroundColor(Theme.alert)
+            Text("Low battery — background tracking is draining power. Disable it in Settings to conserve.")
+                .font(.caption).fontWeight(.medium)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+        }
+        .padding(12)
+        .background(Theme.alert.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("SafeWalk")
     }
 }

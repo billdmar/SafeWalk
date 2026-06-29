@@ -26,6 +26,7 @@ enum NotificationService {
     static let phonesKey = "phones"
     static let latitudeKey = "lat"
     static let longitudeKey = "lon"
+    static let emergencyNumberKey = "emergencyNumber"
 
     /// Registers the actionable categories and wires the delegate. Call once at
     /// app launch, before any notification can be posted.
@@ -46,17 +47,19 @@ enum NotificationService {
     /// escalation instead of failing silently.
     static func postEscalation(contacts: [EmergencyContact],
                                coordinate: CLLocationCoordinate2D?,
+                               emergencyNumberOverride: String? = nil,
                                center: UNUserNotificationCenter = .current(),
                                onFailure: (() -> Void)? = nil) {
         let textableCount = Escalation.dialableCount(in: contacts.map(\.phone))
+        let displayNumber = Escalation.displayNumber(override: emergencyNumberOverride)
 
         let content = UNMutableNotificationContent()
         content.title = "No response detected!"
         if textableCount > 0 {
             let noun = textableCount == 1 ? "contact" : "contacts"
-            content.body = "Tap to call UT Austin Police (\(Escalation.utpdDisplayNumber)) or text your \(textableCount) emergency \(noun) immediately."
+            content.body = "Tap to call \(displayNumber) or text your \(textableCount) emergency \(noun) immediately."
         } else {
-            content.body = "Tap to call UT Austin Police (\(Escalation.utpdDisplayNumber)) immediately."
+            content.body = "Tap to call \(displayNumber) immediately."
         }
         content.sound = .default
         content.categoryIdentifier = textableCount > 0 ? escalateCategory : callCategory
@@ -66,6 +69,9 @@ enum NotificationService {
         if let coordinate {
             userInfo[latitudeKey] = coordinate.latitude
             userInfo[longitudeKey] = coordinate.longitude
+        }
+        if let emergencyNumberOverride, !emergencyNumberOverride.isEmpty {
+            userInfo[emergencyNumberKey] = emergencyNumberOverride
         }
         content.userInfo = userInfo
 

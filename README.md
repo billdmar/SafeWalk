@@ -25,7 +25,11 @@ SafeWalk is an iOS app that keeps an eye on you when you're walking alone — la
 - **Background tracking** — With "Always" location permission, SafeWalk keeps watching your position even when the screen is locked or the app is backgrounded (via the `location` background mode).
 - **Inactivity & no-movement detection** — If you don't reply or you stop moving for too long, the app assumes something may be wrong and escalates automatically.
 - **Multi-contact escalation** — Add and manage trusted contacts (persisted locally with `UserDefaults`). When escalation fires, the alert offers a one-tap "Text *n* contacts" action that opens a group SMS to **every** saved contact with a dialable number — prefilled with a help message and a Maps link to your last known location — alongside the campus-police call. One bad number can't suppress the texts to the others.
-- **One-tap emergency escalation** — A push notification with a "Call UT Police" action dials campus police (512-471-4441) directly from the lock screen.
+- **One-tap emergency escalation** — A push notification with a "Call UT Police" action dials campus police (512-471-4441) directly from the lock screen. Categories register at launch and each alert carries its own payload, so the action buttons are reliable even on the first escalation.
+- **Customizable settings** — A settings screen to tune the check-in cadence and inactivity threshold, toggle background tracking, set the AI's memory depth, override the emergency number for a different campus (UTPD by default), and clear the chat history.
+- **Persistent chat** — The check-in conversation survives an app relaunch; history is bounded so a long walk doesn't bloat each AI request.
+- **Battery-aware** — When background tracking is on and the battery is critically low (and not charging), a banner suggests disabling it to conserve power.
+- **Graceful AI degradation** — Failed companion replies show context-specific copy (no connection vs. service busy vs. not configured), always keeping the safety framing.
 - **Accessibility** — VoiceOver labels throughout, Dynamic Type-friendly chat bubbles, Reduce Motion support, and haptics on escalation.
 
 ## How it works
@@ -49,7 +53,7 @@ SafeWalk is an iOS app that keeps an eye on you when you're walking alone — la
 | AI chat | Google Gemini (`gemini-2.0-flash`) |
 | Location & maps | Core Location + MapKit |
 | Notifications | UserNotifications (actionable categories) |
-| Persistence | `UserDefaults` (Codable emergency contacts) |
+| Persistence | `UserDefaults` (Codable emergency contacts, settings, and chat history) |
 
 ## Screenshots
 

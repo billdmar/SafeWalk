@@ -22,7 +22,8 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         let userInfo = response.notification.request.content.userInfo
         switch response.actionIdentifier {
         case NotificationService.callAction:
-            if let url = Escalation.utpdCallURL() {
+            let override = userInfo[NotificationService.emergencyNumberKey] as? String
+            if let url = Escalation.callURL(override: override) {
                 UIApplication.shared.open(url)
             }
         case NotificationService.textAction:

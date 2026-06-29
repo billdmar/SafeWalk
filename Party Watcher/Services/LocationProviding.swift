@@ -19,4 +19,8 @@ protocol LocationProviding: AnyObject {
 
     func startTracking()
     func stopTracking()
+
+    /// Whether to keep delivering location while backgrounded. SafeWalk lets the
+    /// user turn this off to conserve battery on short, in-foreground walks.
+    func setBackgroundUpdatesEnabled(_ enabled: Bool)
 }
