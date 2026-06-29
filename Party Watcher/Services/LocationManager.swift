@@ -18,6 +18,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate, Lo
     @Published var lastLocation: CLLocation?
     var onMovement: (() -> Void)?
     var onLocationChange: ((CLLocation?) -> Void)?
+    /// User preference: whether background updates may be enabled. Defaults to
+    /// `true` (the original always-on behavior).
+    private var backgroundUpdatesAllowed = true
     override init() {
         super.init()
         manager.delegate = self
@@ -44,11 +47,22 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate, Lo
         manager.stopUpdatingLocation()
     }
 
+    func setBackgroundUpdatesEnabled(_ enabled: Bool) {
+        backgroundUpdatesAllowed = enabled
+        if enabled {
+            enableBackgroundUpdatesIfPermitted()
+        } else {
+            manager.allowsBackgroundLocationUpdates = false
+        }
+    }
+
     /// Enables background location updates, but only once the user has granted
-    /// "Always" authorization. Setting `allowsBackgroundLocationUpdates = true`
-    /// without the location background mode + always auth crashes at runtime, so
-    /// this is guarded and called after updates have started.
+    /// "Always" authorization *and* opted in. Setting
+    /// `allowsBackgroundLocationUpdates = true` without the location background
+    /// mode + always auth crashes at runtime, so this is guarded and called
+    /// after updates have started.
     private func enableBackgroundUpdatesIfPermitted() {
+        guard backgroundUpdatesAllowed else { return }
         guard manager.authorizationStatus == .authorizedAlways else { return }
         // Setting `allowsBackgroundLocationUpdates = true` throws a runtime
         // exception (SIGABRT) unless "location" is declared in the bundle's

@@ -97,4 +97,22 @@ struct EscalationTests {
         let url = Escalation.utpdCallURL()
         #expect(url?.absoluteString == "tel://5124714441")
     }
+
+    // MARK: - Emergency number override
+
+    /// A dialable override is used for the call URL and the display copy.
+    @Test func overrideNumberIsUsedWhenDialable() {
+        #expect(Escalation.callURL(override: "512-555-0123")?.absoluteString == "tel://5125550123")
+        #expect(Escalation.displayNumber(override: "512-555-0123") == "512-555-0123")
+    }
+
+    /// A nil / blank / undialable override falls back to UTPD — escalation can
+    /// never be left without a number to call.
+    @Test func overrideFallsBackToUTPDWhenMissingOrInvalid() {
+        #expect(Escalation.callURL(override: nil)?.absoluteString == "tel://5124714441")
+        #expect(Escalation.callURL(override: "")?.absoluteString == "tel://5124714441")
+        #expect(Escalation.callURL(override: "garbage")?.absoluteString == "tel://5124714441")
+        #expect(Escalation.displayNumber(override: nil) == Escalation.utpdDisplayNumber)
+        #expect(Escalation.displayNumber(override: "nope") == Escalation.utpdDisplayNumber)
+    }
 }

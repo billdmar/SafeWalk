@@ -26,8 +26,11 @@ final class MockLocationProvider: LocationProviding {
     private(set) var startTrackingCalled = false
     private(set) var stopTrackingCalled = false
 
+    private(set) var backgroundUpdatesEnabled: Bool?
+
     func startTracking() { startTrackingCalled = true }
     func stopTracking() { stopTrackingCalled = true }
+    func setBackgroundUpdatesEnabled(_ enabled: Bool) { backgroundUpdatesEnabled = enabled }
 
     /// Simulate a new GPS fix.
     func emit(_ location: CLLocation) {
@@ -83,6 +86,41 @@ final class InMemoryContactStore: ContactStoring {
     func save(_ contacts: [EmergencyContact]) { self.contacts = contacts }
 }
 
+final class InMemorySettingsStore: SettingsStoring {
+    var settings: SafetySettings
+    private(set) var saveCount = 0
+    init(_ settings: SafetySettings = .default) { self.settings = settings }
+    func load() -> SafetySettings { settings }
+    func save(_ settings: SafetySettings) { self.settings = settings; saveCount += 1 }
+}
+
+final class InMemoryChatStore: ChatHistoryStoring {
+    var history: ChatHistory?
+    private(set) var clearCount = 0
+    init(_ history: ChatHistory? = nil) { self.history = history }
+    func load() -> ChatHistory? { history }
+    func save(_ history: ChatHistory) { self.history = history }
+    func clear() { history = nil; clearCount += 1 }
+}
+
+final class MockBatteryMonitor: BatteryMonitoring {
+    var level: Float?
+    var isCharging: Bool
+    var onChange: (() -> Void)?
+    init(level: Float? = nil, isCharging: Bool = false) {
+        self.level = level
+        self.isCharging = isCharging
+    }
+    func start() {}
+    func stop() {}
+    /// Push a new battery reading and fire the observer.
+    func update(level: Float?, isCharging: Bool) {
+        self.level = level
+        self.isCharging = isCharging
+        onChange?()
+    }
+}
+
 // MARK: - Tests
 
 @MainActor
@@ -99,12 +137,18 @@ struct SafetyWatcherViewModelTests {
         location: MockLocationProvider = MockLocationProvider(),
         gemini: StubGemini = StubGemini(),
         store: InMemoryContactStore = InMemoryContactStore(),
+        settingsStore: InMemorySettingsStore = InMemorySettingsStore(),
+        chatStore: InMemoryChatStore = InMemoryChatStore(),
+        battery: MockBatteryMonitor? = nil,
         scheduler: ManualTimerScheduler = ManualTimerScheduler(),
         clock: Clock = Clock(Date(timeIntervalSince1970: 1_000_000))
     ) -> SafetyWatcherViewModel {
         SafetyWatcherViewModel(location: location,
                                gemini: gemini,
                                contactStore: store,
+                               settingsStore: settingsStore,
+                               chatStore: chatStore,
+                               battery: battery,
                                scheduler: scheduler,
                                now: clock.now)
     }
@@ -257,5 +301,123 @@ struct SafetyWatcherViewModelTests {
         let fix = CLLocation(latitude: 30.28, longitude: -97.73)
         location.emit(fix)
         #expect(vm.lastLocation?.coordinate.latitude == fix.coordinate.latitude)
+    }
+
+    // MARK: - Settings
+
+    @Test func settingsLoadFromStoreAndDriveThresholds() {
+        var custom = SafetySettings.default
+        custom.checkInInterval = 30
+        custom.inactivityThreshold = 300
+        let vm = makeVM(settingsStore: InMemorySettingsStore(custom))
+        #expect(vm.checkInInterval == 30)
+        #expect(vm.inactivityThreshold == 300)
+    }
+
+    @Test func applySettingsPersistsAndReArmsCheckInCadence() {
+        let scheduler = ManualTimerScheduler()
+        let settingsStore = InMemorySettingsStore()
+        let vm = makeVM(settingsStore: settingsStore, scheduler: scheduler)
+        vm.onAppear()
+
+        var updated = vm.settings
+        updated.checkInInterval = 30
+        vm.applySettings(updated)
+
+        #expect(settingsStore.saveCount >= 1)
+        #expect(vm.checkInInterval == 30)
+        // The new 30s cadence is now the armed check-in timer.
+        let before = vm.messages.count
+        scheduler.advance(interval: 30)
+        #expect(vm.messages.count == before + 1)
+    }
+
+    @Test func backgroundLocationToggleReachesProvider() {
+        let location = MockLocationProvider()
+        let vm = makeVM(location: location)
+        vm.onAppear()
+        #expect(location.backgroundUpdatesEnabled == true) // default on
+
+        var off = vm.settings
+        off.backgroundLocationEnabled = false
+        vm.applySettings(off)
+        #expect(location.backgroundUpdatesEnabled == false)
+    }
+
+    // MARK: - Persistent chat
+
+    @Test func chatRestoresFromStoreOnInit() {
+        let history = ChatHistory(
+            messages: [.init(text: "earlier message", isUser: true)],
+            conversation: [.init(role: "user", text: "system"), .init(role: "user", text: "earlier message")]
+        )
+        let vm = makeVM(chatStore: InMemoryChatStore(history))
+        #expect(vm.messages.contains { $0.text == "earlier message" })
+    }
+
+    @Test func sendingPersistsChat() {
+        let chatStore = InMemoryChatStore()
+        let vm = makeVM(gemini: StubGemini(result: .success("hi there")), chatStore: chatStore)
+        vm.onAppear()
+        vm.userInput = "hello"
+        vm.sendMessage()
+        #expect(chatStore.history != nil)
+        #expect(chatStore.history?.messages.contains { $0.text == "hello" } == true)
+    }
+
+    @Test func clearChatResetsToGreetingAndClearsStore() {
+        let chatStore = InMemoryChatStore()
+        let vm = makeVM(chatStore: chatStore)
+        vm.onAppear()
+        vm.markSafe()                       // adds messages + persists
+        #expect(vm.messages.count > 1)
+
+        vm.clearChat()
+        #expect(vm.messages.count == 1)     // just the greeting
+        #expect(chatStore.clearCount == 1)
+    }
+
+    // MARK: - Contextual errors
+
+    @Test func failedReplyShowsErrorSpecificCopy() async {
+        let vm = makeVM(gemini: StubGemini(result: .failure(.missingKey)))
+        vm.onAppear()
+        vm.userInput = "are you there?"
+        vm.sendMessage()
+        // The reply copy is appended on a main-queue hop; let it drain.
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        #expect(vm.messages.last?.text == GeminiManager.GeminiError.missingKey.companionMessage)
+        #expect(vm.messages.last?.text.contains("isn't configured") == true)
+    }
+
+    // MARK: - Battery warning
+
+    @Test func lowBatteryWithBackgroundTrackingWarns() {
+        let battery = MockBatteryMonitor(level: 0.10, isCharging: false)
+        let vm = makeVM(battery: battery)
+        vm.onAppear()
+        #expect(vm.lowBatteryWarning == true)
+    }
+
+    @Test func chargingOrHealthyBatteryDoesNotWarn() {
+        let battery = MockBatteryMonitor(level: 0.10, isCharging: true)
+        let vm = makeVM(battery: battery)
+        vm.onAppear()
+        #expect(vm.lowBatteryWarning == false)
+
+        battery.update(level: 0.80, isCharging: false)
+        #expect(vm.lowBatteryWarning == false)
+    }
+
+    @Test func batteryWarningClearsWhenBackgroundTrackingOff() {
+        let battery = MockBatteryMonitor(level: 0.10, isCharging: false)
+        let vm = makeVM(battery: battery)
+        vm.onAppear()
+        #expect(vm.lowBatteryWarning == true)
+
+        var off = vm.settings
+        off.backgroundLocationEnabled = false
+        vm.applySettings(off)
+        #expect(vm.lowBatteryWarning == false)
     }
 }

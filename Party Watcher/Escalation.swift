@@ -90,4 +90,24 @@ enum Escalation {
     static func utpdCallURL() -> URL? {
         URL(string: "tel://\(utpdPhoneDigits)")
     }
+
+    /// The `tel:` URL to dial on escalation. Uses the user's `override` campus /
+    /// police number when it contains dialable digits, otherwise falls back to
+    /// the built-in UTPD line — so a blank or malformed override can never leave
+    /// escalation with no number to call.
+    static func callURL(override: String?) -> URL? {
+        if let override, let digits = dialableDigits(from: override) {
+            return URL(string: "tel://\(digits)")
+        }
+        return utpdCallURL()
+    }
+
+    /// The human-readable number shown in the escalation copy: the override (as
+    /// the user typed it) when dialable, else the UTPD display number.
+    static func displayNumber(override: String?) -> String {
+        if let override, dialableDigits(from: override) != nil {
+            return override
+        }
+        return utpdDisplayNumber
+    }
 }
