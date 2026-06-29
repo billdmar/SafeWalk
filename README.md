@@ -9,6 +9,7 @@ SafeWalk is an iOS app that keeps an eye on you when you're walking alone — la
 ![iOS](https://img.shields.io/badge/iOS-18%2B-000000?logo=apple&logoColor=white)
 ![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0071e3)
 ![Gemini](https://img.shields.io/badge/AI-Google%20Gemini-4285F4?logo=google&logoColor=white)
+![SwiftLint](https://img.shields.io/badge/style-SwiftLint-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ---

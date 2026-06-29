@@ -64,7 +64,7 @@ enum QuickReplies {
                    effect: .neutral),
         QuickReply(label: "I need help 🚨",
                    botResponse: "Got it — escalating now. Hang tight, help is being contacted.",
-                   effect: .escalate),
+                   effect: .escalate)
     ]
 
     /// The deterministic companion response for a given button label, or `nil`

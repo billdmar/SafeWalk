@@ -11,6 +11,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    name: SwiftLint
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      # Non-strict: real `error`-severity violations fail the job, while
+      # warnings are surfaced as guidance. (The in-progress MVVM refactor
+      # tightens this to `--strict` once the legacy god view is decomposed.)
+      - name: Lint
+        run: swiftlint lint --reporter github-actions-logging
+
   build-and-test:
     name: Build & Test (iOS Simulator)
     runs-on: macos-15
@@ -47,4 +64,21 @@ jobs:
             -destination 'platform=iOS Simulator,OS=latest,name=iPhone 16 Pro' \
             -derivedDataPath .build/DerivedData \
             -only-testing:"Party WatcherTests" \
+            -enableCodeCoverage YES \
             CODE_SIGNING_ALLOWED=NO
+
+      # Summarize line coverage for the app target from the .xcresult bundle and
+      # publish it to the GitHub Actions run summary. Informational only — does
+      # not gate the merge.
+      - name: Report code coverage
+        if: always()
+        run: |
+          XCRESULT=$(find .build/DerivedData/Logs/Test -name '*.xcresult' | head -1)
+          if [ -z "$XCRESULT" ]; then
+            echo "No .xcresult found; skipping coverage report."
+            exit 0
+          fi
+          echo "### Code coverage" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          xcrun xccov view --report "$XCRESULT" | head -40 | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
