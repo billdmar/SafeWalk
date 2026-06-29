@@ -4,6 +4,8 @@ import SwiftUI
 /// deterministic quick-reply row, and the message input bar.
 struct ChatCardView: View {
     @ObservedObject var vm: SafetyWatcherViewModel
+    /// Drives keyboard focus so it can be dismissed after a message is sent.
+    @FocusState private var inputFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -83,8 +85,9 @@ struct ChatCardView: View {
                 .autocapitalization(.sentences)
                 .disableAutocorrection(true)
                 .submitLabel(.send)
-                .onSubmit { if !vm.inputIsEmpty { vm.sendMessage() } }
-            Button(action: { vm.sendMessage() }) {
+                .focused($inputFocused)
+                .onSubmit(send)
+            Button(action: send) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 32))
                     .foregroundColor(vm.inputIsEmpty ? Color.gray.opacity(0.4) : Theme.burntOrange)
@@ -92,5 +95,13 @@ struct ChatCardView: View {
             .disabled(vm.inputIsEmpty)
             .accessibilityLabel("Send reply")
         }
+    }
+
+    /// Sends the current message and dismisses the keyboard, so the transcript
+    /// isn't left hidden behind it after a reply.
+    private func send() {
+        guard !vm.inputIsEmpty else { return }
+        vm.sendMessage()
+        inputFocused = false
     }
 }

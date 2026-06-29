@@ -34,8 +34,9 @@ only a commented-out placeholder, and CI writes its own empty stub.
 
 | Severity | Area | Finding | Recommendation |
 |---|---|---|---|
-| High | Escalation fail-safe | `sendPoliceNotification()` calls `UNUserNotificationCenter.add(request)` with **no completion handler** — if notification authorization was denied or the add fails, escalation **silently no-ops**. For a safety app this breaks the core guarantee. | Add the completion handler and an in-app fallback that works even when notifications are denied (e.g. present the call/text UI directly from the in-app alert). |
-| High | Escalation fail-safe | Notification categories are registered **at escalation time**, the same runloop tick as the post. Category registration is async; the actionable buttons may not be attached when the notification renders, leaving an alert with **no action buttons**. | Register categories **once at app launch** (in app init / `requestNotificationPermission`), not inside `sendPoliceNotification`. |
+| ~~High~~ → addressed | Escalation fail-safe | `sendPoliceNotification()` called `UNUserNotificationCenter.add(request)` with **no completion handler** — a denied/failed add made escalation **silently no-op**. | **Fixed (PR5).** `NotificationService.postEscalation` now passes a completion handler; on failure the view model raises the in-app alert and posts a chat line pointing the user to the on-screen "I need help" button, so escalation never dies quietly. |
+| ~~High~~ → addressed | Escalation fail-safe | Notification categories were registered **at escalation time**, racing the notification's own delivery, so the action buttons could be missing on the first alert. | **Fixed (PR5).** Categories + the delegate are now registered **once at app launch** (`Party_WatcherApp.init` → `NotificationService.registerCategories()`). |
+| ~~High~~ → addressed | Escalation race | The notification delegate read the contacts/coordinate from **shared mutable singleton state** set just before each post — a second, rapid escalation could overwrite it before the first was handled. | **Fixed (PR5).** Each notification now carries its contacts + coordinate as an immutable `userInfo` snapshot, read at tap time; no shared mutable state. |
 | ~~High~~ → addressed | Escalation fail-safe | Previously only `contacts.first` was ever notified. | **Fixed in the multi-contact PR** — escalation now offers a group SMS to *every* dialable contact; undialable numbers are dropped rather than aborting the send. The "manual tap required" limitation below remains. |
 | Medium | Escalation fail-safe | Escalation requires the user to **tap** the notification action — nothing is sent fully autonomously. This is an iOS constraint (apps can't silently place calls/SMS), but it means a fully incapacitated user is not helped by the SMS/call path. | Document prominently in-app and in the README. Consider a server-assisted escalation (out of scope for a local-only prototype) for true autonomy. |
 | Medium | API key exposure | The Gemini key ships **in the app binary** (`Secrets.geminiAPIKey`, sent as `X-goog-api-key`). Any client-embedded key is extractable from the IPA. Acceptable for a prototype, not for distribution. | For production, proxy Gemini through a backend so the key never ships to the client; scope/restrict the key in Google Cloud. |
@@ -65,9 +66,13 @@ only a commented-out placeholder, and CI writes its own empty stub.
 
 ## Overall risk verdict
 
-**Moderate.** No critical data-leak or injection vulnerabilities, and the API
-key is verified clean in history. The remaining real risks are the two **High**
-fail-safe gaps in the notification escalation path (no `add()` completion
-handler; async category registration race). Address those — ideally with an
-in-app escalation fallback that does not depend on notification delivery —
-before treating SafeWalk as anything more than a prototype.
+**Low–Moderate.** No critical data-leak or injection vulnerabilities, and the
+API key is verified clean in history. The three **High** fail-safe gaps in the
+notification escalation path (no `add()` completion handler; async category
+registration race; shared-mutable-state escalation race) have all been
+**addressed in PR5** — categories register at launch, each notification carries
+its own immutable payload, and a delivery failure now falls back to the in-app
+escalation rather than failing silently. The remaining items are the documented
+prototype limitations (manual-tap escalation, client-embedded API key, PII in
+`UserDefaults`); resolve those before treating SafeWalk as anything more than a
+prototype.

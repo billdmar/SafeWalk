@@ -70,6 +70,10 @@ class GeminiManager {
         case noCandidate
         /// No API key is configured, so no network call was attempted.
         case missingKey
+        /// The request could not be built (invalid endpoint URL or the
+        /// conversation failed to encode) — a client-side problem, distinct
+        /// from a `.decoding` failure parsing the *response*.
+        case invalidRequest
     }
 
     // MARK: - Pure, testable classification logic
@@ -119,6 +123,20 @@ class GeminiManager {
         return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// Bounds an ever-growing conversation before it's sent to the API.
+    ///
+    /// A long walk accumulates many check-in turns; sending the entire history
+    /// on every request wastes tokens and latency without improving the reply.
+    /// This keeps the leading system-prompt turn (the first message, which sets
+    /// the companion's behavior) plus the most recent `keepingLast` turns. Pure
+    /// and network-free.
+    static func prune(_ messages: [GeminiMessage], keepingLast keep: Int) -> [GeminiMessage] {
+        guard messages.count > keep + 1 else { return messages }
+        let system = messages.first.map { [$0] } ?? []
+        let recent = messages.suffix(keep)
+        return system + recent
+    }
+
     // MARK: - Public API
 
     /// Sends a conversation to Gemini and returns the model's reply.
@@ -164,7 +182,7 @@ class GeminiManager {
             #if DEBUG
             print("[GeminiManager] Invalid URL or body")
             #endif
-            completion(.failure(.decoding))
+            completion(.failure(.invalidRequest))
             return
         }
 

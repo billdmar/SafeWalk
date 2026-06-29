@@ -16,9 +16,13 @@ struct StatusHeroView: View {
                 Image(systemName: status.symbol)
                     .font(.system(size: 28, weight: .semibold))
                     .foregroundColor(status.color)
+                    // Pulse only while attention is needed (not "safe"), and only
+                    // when Reduce Motion is off. `isActive:` actually starts and
+                    // stops the repeating animation — the previous `value:` form
+                    // still ran a pulse on every status change under Reduce Motion.
                     .symbolEffect(.pulse,
-                                  options: (status == .safe || reduceMotion) ? .nonRepeating : .repeating,
-                                  value: status)
+                                  options: .repeating,
+                                  isActive: status != .safe && !reduceMotion)
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(status.title)

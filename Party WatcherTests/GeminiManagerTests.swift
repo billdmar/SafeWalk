@@ -87,4 +87,31 @@ struct GeminiManagerTests {
     @Test func nonEmptyAPIKeyIsUsable() {
         #expect(GeminiManager.isUsable(apiKey: "AIzaSyExampleKey") == true)
     }
+
+    // MARK: - Conversation pruning
+
+    private func msg(_ role: String, _ text: String) -> GeminiManager.GeminiMessage {
+        .init(role: role, parts: [.init(text: text)])
+    }
+
+    /// A short conversation (within the limit) is returned unchanged.
+    @Test func pruneLeavesShortConversationsUntouched() {
+        let convo = [msg("user", "system prompt"), msg("user", "hi"), msg("model", "hello")]
+        let pruned = GeminiManager.prune(convo, keepingLast: 20)
+        #expect(pruned.count == 3)
+    }
+
+    /// A long conversation keeps the leading system prompt plus the most recent
+    /// `keepingLast` turns — bounding what is re-sent on every request.
+    @Test func pruneKeepsSystemPromptAndRecentTurns() {
+        var convo = [msg("user", "SYSTEM")]
+        for i in 0..<50 { convo.append(msg(i.isMultiple(of: 2) ? "user" : "model", "turn \(i)")) }
+
+        let pruned = GeminiManager.prune(convo, keepingLast: 10)
+
+        #expect(pruned.count == 11)                                  // system + 10
+        #expect(pruned.first?.parts.first?.text == "SYSTEM")          // system prompt preserved
+        #expect(pruned.last?.parts.first?.text == "turn 49")          // newest kept
+        #expect(pruned.contains { $0.parts.first?.text == "turn 0" } == false) // oldest dropped
+    }
 }
